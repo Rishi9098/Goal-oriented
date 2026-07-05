@@ -37,16 +37,18 @@ Both the short-lived access token and the 7-day refresh token (`refresh_token_ex
 - Tests: `test_auth.py` TestLogin/TestRefresh rewritten for the cookie contract (6 new cases: CSRF-missing → 403, CSRF-mismatch → 403, no-session → 401, invalid-token → 401, rotation, logout-clears-session). `conftest.py`'s test client now uses `https://test` as `base_url` so its cookie jar honors `Secure` the same way a real browser would — this is also what caught the bug during development (cookies silently weren't being sent over the plain-`http://test` fixture). Full backend suite: 147 passed.
 - Deferred, not done here: refresh-token family/session revocation list (so a leaked refresh token before rotation can be force-invalidated server-side) — bigger feature, not part of this pass.
 
-## 5. No rate limit or timeout on the OpenAI Copilot endpoint — unbounded billing exposure
+## 5. No rate limit or timeout on the OpenAI Copilot endpoint — unbounded billing exposure — ✅ PARTIALLY FIXED 2026-07-05
 **File:** `backend/app/routers/copilot.py:98-109`
 
 `client.chat.completions.create` is called with no `timeout` parameter and no per-user request cap beyond the generic IP bucket (itself bypassable per #2). A single authenticated user (or an attacker who bypasses the IP limiter) can fire unlimited GPT-4o calls, each billed to the project's OpenAI account, with no circuit breaker. A hung OpenAI request also has no timeout, so it will hold the request (and the DB session/connection from `Depends(get_db)`) open indefinitely.
 **Fix:** Add a `timeout=` to the OpenAI call, add a per-user daily/hourly cap tracked in the DB or a cache, and catch `openai.APIError`/`RateLimitError` to fall back to `_fallback_response` instead of raising a raw 500.
+**Status:** Timeout fixed — `AsyncOpenAI` is now constructed with `timeout=settings.openai_timeout_seconds` (default 10s) and `max_retries=settings.openai_max_retries` (default 2, using the SDK's built-in exponential-backoff retry). **Per-user cost cap not implemented** — the generic IP rate limiter (now spoof-resistant per #2) is the only throttle on this endpoint. A per-user daily/hourly cap would need either a new DB-backed counter or a cache layer this project doesn't have yet; flagging as the top remaining item.
 
-## 6. Copilot endpoint has no error handling around the OpenAI call — contradicts its own "always functional" design
+## 6. Copilot endpoint has no error handling around the OpenAI call — contradicts its own "always functional" design — ✅ FIXED 2026-07-05
 **File:** `backend/app/routers/copilot.py:98-110`
 
 The module docstring says the endpoint "Falls back to a rule-based responder when no key is configured so the endpoint is always functional," but that fallback only triggers when the key is *absent*. If the key is present but OpenAI is down, rate-limited, or returns an error, the exception propagates as an unhandled 500 — the fallback path is dead code in the one scenario (upstream outage) where it's actually needed.
+**Status:** Fixed — the `create()` call is now wrapped in `try/except OpenAIError` (the SDK's base exception, covering timeouts, rate limits, connection failures, and API errors), logging a warning and falling through to `_fallback_response` on any failure. Tests: `test_copilot.py::TestCopilotOpenAIPath` (3 new cases, faking the OpenAI client) verify the success path, the error-falls-back path, and that the client is constructed with the configured timeout/retries. Full backend suite: 150 passed.
 **Fix:** Wrap the `create()` call in `try/except` and fall through to `_fallback_response` on any `openai` exception.
 
 ## 7. Startup runs `Base.metadata.create_all()` while Alembic migrations also exist — schema drift / broken deploys

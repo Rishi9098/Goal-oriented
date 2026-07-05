@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     # AI / Copilot
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
+    openai_timeout_seconds: float = 10.0
+    openai_max_retries: int = 2
 
     # Monte Carlo
     monte_carlo_simulations: int = 10_000
