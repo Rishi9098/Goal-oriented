@@ -47,6 +47,15 @@ class TestIncome:
         resp = await client.get("/api/v1/financials/income")
         assert resp.status_code == 403
 
+    async def test_absurdly_large_annual_amount_rejected(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
+        # AUDIT.md #10: unbounded amounts can drive the Monte Carlo engine's
+        # compounding loop to inf/NaN.
+        payload = {"source_type": "salary", "annual_amount": 1e15}
+        resp = await client.post("/api/v1/financials/income", json=payload, headers=auth_headers)
+        assert resp.status_code == 422
+
 
 @pytest.mark.asyncio
 class TestExpenses:
@@ -75,6 +84,13 @@ class TestExpenses:
         expense_id = create.json()["id"]
         resp = await client.delete(f"/api/v1/financials/expenses/{expense_id}", headers=auth_headers)
         assert resp.status_code == 204
+
+    async def test_absurdly_large_monthly_amount_rejected(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
+        payload = {"category": "housing", "monthly_amount": 1e12}
+        resp = await client.post("/api/v1/financials/expenses", json=payload, headers=auth_headers)
+        assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -116,6 +132,13 @@ class TestAssets:
         )
         assert resp.status_code == 404
 
+    async def test_absurdly_large_current_value_rejected(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
+        payload = {"asset_type": "brokerage", "current_value": 1e18}
+        resp = await client.post("/api/v1/financials/assets", json=payload, headers=auth_headers)
+        assert resp.status_code == 422
+
 
 @pytest.mark.asyncio
 class TestLiabilities:
@@ -151,6 +174,15 @@ class TestLiabilities:
         lid = create.json()["id"]
         resp = await client.delete(f"/api/v1/financials/liabilities/{lid}", headers=auth_headers)
         assert resp.status_code == 204
+
+    async def test_absurdly_large_balance_rejected(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
+        payload = {"liability_type": "mortgage", "balance": 1e18}
+        resp = await client.post(
+            "/api/v1/financials/liabilities", json=payload, headers=auth_headers
+        )
+        assert resp.status_code == 422
 
 
 @pytest.mark.asyncio

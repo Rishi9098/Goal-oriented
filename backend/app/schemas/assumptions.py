@@ -11,7 +11,8 @@ class FinancialAssumptionsBase(BaseModel):
     expected_return_aggressive: float = Field(ge=0, le=0.5, default=0.09)
     tax_rate: float = Field(ge=0, le=1, default=0.22)
     retirement_age: int = Field(ge=40, le=80, default=65)
-    social_security_monthly: float = Field(ge=0, default=0.0)
+    # Upper bound is a sanity backstop (AUDIT.md #10), not a real limit.
+    social_security_monthly: float = Field(ge=0, le=10_000_000.0, default=0.0)
 
 
 class FinancialAssumptionsUpdate(FinancialAssumptionsBase):

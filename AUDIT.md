@@ -74,10 +74,12 @@ Every call to `/dashboard` or `/reports/summary` awaits `quick_probability_async
 Tests: `test_planning_service.py::TestRefreshGoalProbabilitiesConcurrency` (2 new cases, using the real SQLite-backed `db` fixture) — one proves >1 simulation is in-flight at once (would be impossible with the old sequential loop), the other proves each result maps back to the correct goal after concurrent dispatch. Full backend suite: 152 passed.
 **Fix:** Dispatch with `asyncio.gather(*[quick_probability_async(...) for g in goals])`.
 
-## 10. No upper bound on financial input fields — Monte Carlo can be driven to `inf`/`NaN`
+## 10. No upper bound on financial input fields — Monte Carlo can be driven to `inf`/`NaN` — ✅ FIXED 2026-07-05
 **Files:** `backend/app/schemas/goal.py:14`, `backend/app/schemas/financials.py:10,26,43,66`
 
 `target_amount`, `current_amount`, `monthly_contribution`, `annual_amount`, etc. are validated with `gt=0`/`ge=0` but have no upper bound (`le=`). A goal with an extreme `target_amount` (or a 30+ year horizon compounding a large `monthly_contribution`) can produce `inf`/`NaN` terminal values in `run_simulation`'s compounding loop (`backend/app/services/monte_carlo.py:90-92`), which then breaks `np.percentile` and the histogram bucketing — either a 500 or nonsensical `success_rate` returned to the user.
+**Status:** Fixed — added `le=` bounds, deliberately generous (not meant to constrain legitimate use, just to backstop typos/abuse): 1,000,000,000 for one-off amounts (`target_amount`, `current_amount`, asset `current_value`, liability `balance`), 10,000,000 for monthly figures (`monthly_contribution`, expense `monthly_amount`, liability `monthly_payment`, `social_security_monthly`), 100,000,000 for `annual_amount` (income). Applied to both the `Create` and `Update` schema variants in `goal.py` and `financials.py`, plus `assumptions.py`'s `social_security_monthly` which had the same gap.
+Tests: added one out-of-range case per bounded field across `test_goals.py` and `test_financials.py` (goal target/contribution, income annual amount, expense monthly amount, asset value, liability balance — 6 new cases), each asserting `422`. Full backend suite: 158 passed.
 **Fix:** Add sane upper bounds to the Pydantic fields, and/or clip/guard terminal values before percentile computation.
 
 ## 11. `conversation_id` accepted but never persisted — Copilot has no real multi-turn memory

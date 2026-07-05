@@ -104,3 +104,19 @@ class TestGoalsCRUD:
         payload = {**GOAL_PAYLOAD, "target_amount": -1000}
         resp = await client.post("/api/v1/goals", json=payload, headers=auth_headers)
         assert resp.status_code == 422
+
+    async def test_absurdly_large_target_amount_rejected(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
+        # AUDIT.md #10: unbounded amounts can drive the Monte Carlo engine's
+        # compounding loop to inf/NaN.
+        payload = {**GOAL_PAYLOAD, "target_amount": 1e18}
+        resp = await client.post("/api/v1/goals", json=payload, headers=auth_headers)
+        assert resp.status_code == 422
+
+    async def test_absurdly_large_monthly_contribution_rejected(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
+        payload = {**GOAL_PAYLOAD, "monthly_contribution": 1e12}
+        resp = await client.post("/api/v1/goals", json=payload, headers=auth_headers)
+        assert resp.status_code == 422

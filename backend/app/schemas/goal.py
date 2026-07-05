@@ -8,13 +8,23 @@ GoalCategory = Literal["retirement", "education", "home", "travel", "wealth", "e
 RiskProfile = Literal["conservative", "balanced", "aggressive"]
 
 
+
+# Upper bounds keep user-supplied amounts within a plausible financial-planning
+# range and out of the territory where the Monte Carlo engine's compounding
+# loop (backend/app/services/monte_carlo.py) can produce inf/NaN terminal
+# values (AUDIT.md #10). None of these are meant to be tight — they're a
+# backstop against typos and abuse, not a real constraint on legitimate use.
+_MAX_AMOUNT = 1_000_000_000.0
+_MAX_MONTHLY_AMOUNT = 10_000_000.0
+
+
 class GoalBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     category: GoalCategory
-    target_amount: float = Field(gt=0)
-    current_amount: float = Field(ge=0, default=0.0)
+    target_amount: float = Field(gt=0, le=_MAX_AMOUNT)
+    current_amount: float = Field(ge=0, le=_MAX_AMOUNT, default=0.0)
     target_date: date
-    monthly_contribution: float = Field(ge=0, default=0.0)
+    monthly_contribution: float = Field(ge=0, le=_MAX_MONTHLY_AMOUNT, default=0.0)
     risk_profile: RiskProfile = "balanced"
     priority: int = Field(ge=1, le=10, default=1)
 
@@ -26,10 +36,10 @@ class GoalCreate(GoalBase):
 class GoalUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     category: GoalCategory | None = None
-    target_amount: float | None = Field(default=None, gt=0)
-    current_amount: float | None = Field(default=None, ge=0)
+    target_amount: float | None = Field(default=None, gt=0, le=_MAX_AMOUNT)
+    current_amount: float | None = Field(default=None, ge=0, le=_MAX_AMOUNT)
     target_date: date | None = None
-    monthly_contribution: float | None = Field(default=None, ge=0)
+    monthly_contribution: float | None = Field(default=None, ge=0, le=_MAX_MONTHLY_AMOUNT)
     risk_profile: RiskProfile | None = None
     priority: int | None = Field(default=None, ge=1, le=10)
 
