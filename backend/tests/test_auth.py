@@ -220,11 +220,16 @@ class TestForgotResetPassword:
         assert resp.json().get("reset_token") is None
 
     async def test_forgot_password_known_email_does_not_leak_token(
-        self, client: AsyncClient
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Regression test: the response must never hand back the reset token
         # itself outside of debug builds, or anyone who knows a user's email
         # can reset their password without ever receiving the "sent" email.
+        # Forced explicitly rather than relying on the ambient backend/.env's
+        # DEBUG value — local dev setups (scripts/setup_mac.sh etc.) set
+        # DEBUG=true, which would otherwise make this assertion depend on
+        # whatever .env happens to be on the machine running the suite.
+        monkeypatch.setattr("app.routers.auth.settings.debug", False)
         await self._register(client)
         resp = await client.post(
             "/api/v1/auth/forgot-password",
@@ -240,6 +245,8 @@ class TestForgotResetPassword:
         monkeypatch.setattr(
             "app.routers.auth.secrets.token_urlsafe", lambda *_: known_token
         )
+        # See comment in test_forgot_password_known_email_does_not_leak_token.
+        monkeypatch.setattr("app.routers.auth.settings.debug", False)
 
         await self._register(client)
         forgot = await client.post(

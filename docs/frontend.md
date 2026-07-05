@@ -100,7 +100,7 @@ VITE_API_BASE_URL=http://localhost:8000/api/v1
 
 ```bash
 bun install
-bun run dev        # dev server at :5173
+bun run dev        # dev server at :8080 (set by the shared Vite preset — see vite.config.ts)
 bun run build      # production bundle
 bun run preview    # preview production build
 ```

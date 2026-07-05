@@ -30,7 +30,17 @@ class Settings(BaseSettings):
     cookie_domain: str | None = None
 
     # CORS
-    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    # Port 8080 is the frontend's actual local dev port (set by the shared
+    # @lovable.dev/vite-tanstack-config preset's sandbox port detection, not
+    # hardcoded in this repo's vite.config.ts) — verified by actually running
+    # `bun run dev` rather than assuming the conventional Vite default of
+    # 5173. Both are listed since either can show up depending on how Vite
+    # is invoked.
+    cors_origins: list[str] = [
+        "http://localhost:8080",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]
 
     # AI / Copilot
     openai_api_key: str = ""
