@@ -22,41 +22,49 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
-        "ix_goals_user_id_active ON goals(user_id, is_active);"
-    )
-    op.execute(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
-        "ix_income_sources_user_id_active ON income_sources(user_id, is_active);"
-    )
-    op.execute(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
-        "ix_expenses_user_id_active ON expenses(user_id, is_active);"
-    )
-    op.execute(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
-        "ix_assets_user_id_active ON assets(user_id, is_active);"
-    )
-    op.execute(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
-        "ix_liabilities_user_id_active ON liabilities(user_id, is_active);"
-    )
-    # goals ordered by priority + created_at — covers the default list query
-    op.execute(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
-        "ix_goals_user_id_priority ON goals(user_id, priority ASC, created_at ASC) "
-        "WHERE is_active = TRUE;"
-    )
+    # CREATE INDEX CONCURRENTLY cannot run inside a transaction block — it
+    # errors with "CREATE INDEX CONCURRENTLY cannot run inside a transaction
+    # block", which is exactly what Alembic wraps every migration in by
+    # default. autocommit_block() commits the current transaction, runs the
+    # enclosed statements with the connection in autocommit mode, then opens
+    # a fresh transaction for whatever migration runs next.
+    with op.get_context().autocommit_block():
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+            "ix_goals_user_id_active ON goals(user_id, is_active);"
+        )
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+            "ix_income_sources_user_id_active ON income_sources(user_id, is_active);"
+        )
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+            "ix_expenses_user_id_active ON expenses(user_id, is_active);"
+        )
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+            "ix_assets_user_id_active ON assets(user_id, is_active);"
+        )
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+            "ix_liabilities_user_id_active ON liabilities(user_id, is_active);"
+        )
+        # goals ordered by priority + created_at — covers the default list query
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+            "ix_goals_user_id_priority ON goals(user_id, priority ASC, created_at ASC) "
+            "WHERE is_active = TRUE;"
+        )
 
 
 def downgrade() -> None:
-    for idx in (
-        "ix_goals_user_id_priority",
-        "ix_liabilities_user_id_active",
-        "ix_assets_user_id_active",
-        "ix_expenses_user_id_active",
-        "ix_income_sources_user_id_active",
-        "ix_goals_user_id_active",
-    ):
-        op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {idx};")
+    with op.get_context().autocommit_block():
+        for idx in (
+            "ix_goals_user_id_priority",
+            "ix_liabilities_user_id_active",
+            "ix_assets_user_id_active",
+            "ix_expenses_user_id_active",
+            "ix_income_sources_user_id_active",
+            "ix_goals_user_id_active",
+        ):
+            op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {idx};")

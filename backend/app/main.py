@@ -1,16 +1,26 @@
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.config import get_settings
-from app.database import AsyncSessionLocal, create_tables
+from app.database import AsyncSessionLocal
 from app.logging_config import configure_logging, get_logger
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.request_id import RequestIDMiddleware
-from app.routers import assumptions, auth, copilot, dashboard, financials, goals, profile, reports, simulate
+from app.routers import (
+    assumptions,
+    auth,
+    copilot,
+    dashboard,
+    financials,
+    goals,
+    profile,
+    reports,
+    simulate,
+)
 
 configure_logging()
 settings = get_settings()
@@ -19,8 +29,13 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    # Schema is owned exclusively by Alembic migrations (see backend/alembic/).
+    # This used to also call create_tables() (Base.metadata.create_all) on
+    # every boot, which only creates missing tables and never applies
+    # ALTER TABLEs from later migrations — running both meant two sources of
+    # truth for schema, and create_all() winning the race on a fresh database
+    # would leave `alembic upgrade head` failing with "already exists".
     logger.info("startup environment=%s version=%s", settings.environment, settings.app_version)
-    await create_tables()
     yield
     logger.info("shutdown")
 
