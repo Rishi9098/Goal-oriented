@@ -1,6 +1,7 @@
 import hashlib
 import secrets
 import uuid
+from collections import OrderedDict
 from datetime import UTC, datetime, timedelta
 from typing import Literal, TypedDict
 
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.database import get_db
 from app.middleware.auth import get_current_user
+from app.middleware.rate_limit import _TokenBucket
 from app.models.reset_token import PasswordResetToken  # registers model with Base
 from app.models.user import User
 from app.schemas.user import (
@@ -46,6 +48,34 @@ _REFRESH_COOKIE_PATH = "/api/v1/auth"
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+# Per-email throttle for /forgot-password, independent of the generic IP+path
+# rate limit (AUDIT.md #13). The IP limiter alone doesn't stop someone from
+# mass-issuing reset tokens for one target email from many source IPs/spoofed
+# headers; this caps volume per email regardless of where requests come from.
+_FORGOT_PASSWORD_LIMIT = 3
+_FORGOT_PASSWORD_WINDOW_SECONDS = 3600.0
+_FORGOT_PASSWORD_MAX_TRACKED_EMAILS = 10_000
+_forgot_password_buckets: OrderedDict[str, _TokenBucket] = OrderedDict()
+
+
+def _check_forgot_password_throttle(email: str) -> bool:
+    key = email.strip().lower()
+    bucket = _forgot_password_buckets.get(key)
+    if bucket is None:
+        bucket = _TokenBucket(float(_FORGOT_PASSWORD_LIMIT))
+        _forgot_password_buckets[key] = bucket
+    else:
+        _forgot_password_buckets.move_to_end(key)
+
+    while len(_forgot_password_buckets) > _FORGOT_PASSWORD_MAX_TRACKED_EMAILS:
+        _forgot_password_buckets.popitem(last=False)
+
+    return bucket.consume(
+        float(_FORGOT_PASSWORD_LIMIT),
+        _FORGOT_PASSWORD_LIMIT / _FORGOT_PASSWORD_WINDOW_SECONDS,
+    )
 
 
 class _CookieAttrs(TypedDict):
@@ -206,6 +236,12 @@ async def update_me(
 async def forgot_password(
     body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)
 ) -> ForgotPasswordResponse:
+    if not _check_forgot_password_throttle(body.email):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again later.",
+        )
+
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
 

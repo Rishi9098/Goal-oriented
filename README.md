@@ -83,6 +83,10 @@ docker compose up --build
 docker compose exec backend alembic upgrade head
 ```
 
+This step is **required** — the backend no longer auto-creates tables on
+startup (see [Production Deployment Notes](#production-deployment-notes)).
+Skipping it means the app boots against an empty database.
+
 ### 4 — Local backend development (without Docker)
 
 ```bash
@@ -104,6 +108,60 @@ bun run dev
 ```
 
 ---
+
+## Production Deployment Notes
+
+A few things that are easy to get wrong deploying this app outside local
+Docker Compose. See `AUDIT.md` for the full history and rationale.
+
+### Schema comes from Alembic only
+
+`alembic upgrade head` must be run against every environment before the app
+serves traffic — the backend does **not** auto-create tables on startup.
+There is no fallback; a fresh database with no migrations applied will 404/500
+on first request.
+
+### Cross-origin cookies require exact configuration
+
+The refresh token is delivered as an `httpOnly` cookie, which only works
+cross-origin (frontend and backend on different domains, the normal case here)
+if all of the following hold:
+- `CORS_ORIGINS` lists the frontend's **exact** origin(s) — no wildcard, since
+  wildcard origins can't be combined with `allow_credentials=True`.
+- The frontend must send `credentials: "include"` on every request (already
+  done in `code/src/lib/api.ts`).
+- Both frontend and backend must be served over HTTPS in production —
+  `DEBUG=false` makes the cookies `Secure` + `SameSite=None`, which browsers
+  refuse to send over plain HTTP.
+
+### Behind a load balancer or reverse proxy
+
+Set `TRUSTED_PROXY_IPS` to the LB's IP(s), or the rate limiter will key every
+request off the LB's own IP instead of the real client, effectively sharing
+one rate-limit bucket across all traffic. Leave it empty (default) for a
+single-instance deployment with no proxy in front.
+
+### Rate limiting is in-memory, per-process
+
+Fine for one instance. The moment this runs as more than one process/replica,
+each gets its own counters and the effective limit multiplies by instance
+count. Move to a Redis-backed limiter before scaling horizontally.
+
+### Known gaps not covered by this pass
+
+- **No email/SMS delivery** for password resets — `/auth/forgot-password`
+  only returns the reset token when `DEBUG=true`; there is currently no way
+  for a real user to receive it in production. Needs an email provider
+  integration before this flow is usable end-to-end.
+- **No per-user cap on Copilot (OpenAI) usage** — only the generic rate
+  limiter throttles this endpoint, so cost exposure is bounded by request
+  rate, not by user or by spend.
+- **No refresh-token revocation list** — a leaked refresh token remains valid
+  until it expires or is rotated by use; there's no way to force-invalidate
+  one early (e.g., on "sign out everywhere" or a detected compromise).
+- **Copilot has no real conversation memory** — each message is answered
+  independently; `conversation_id` is echoed back but prior turns aren't
+  replayed to the model.
 
 ## Project Structure
 

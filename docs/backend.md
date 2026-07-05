@@ -27,26 +27,40 @@ backend/
 │   ├── models/
 │   │   ├── user.py          # User ORM model
 │   │   ├── goal.py          # Goal ORM model
+│   │   ├── financials.py    # Asset / Liability / IncomeSource / Expense
+│   │   ├── profile.py       # User profile ORM model
+│   │   ├── assumptions.py   # Financial assumptions ORM model
+│   │   ├── reset_token.py   # Password reset token ORM model
 │   │   └── simulation.py    # Simulation result ORM model
 │   ├── schemas/
 │   │   ├── user.py          # Register / Login / Token schemas
 │   │   ├── goal.py          # Goal CRUD schemas
+│   │   ├── financials.py    # Financials CRUD schemas
+│   │   ├── profile.py       # Profile schemas
+│   │   ├── assumptions.py   # Assumptions schemas
+│   │   ├── reports.py       # Report summary schemas
 │   │   └── simulation.py    # Simulation + Optimisation + Chat schemas
 │   ├── routers/
-│   │   ├── auth.py          # /auth/*
+│   │   ├── auth.py          # /auth/* (login/refresh use httpOnly cookies)
 │   │   ├── goals.py         # /goals/*
 │   │   ├── dashboard.py     # /dashboard
 │   │   ├── simulate.py      # /simulate  /simulate/optimize
-│   │   └── copilot.py       # /copilot
+│   │   ├── copilot.py       # /copilot
+│   │   ├── profile.py       # /profile
+│   │   ├── financials.py    # /financials/*
+│   │   ├── assumptions.py   # /assumptions
+│   │   └── reports.py       # /reports/summary
 │   ├── services/
 │   │   ├── monte_carlo.py   # Core simulation engine
 │   │   ├── optimizer.py     # Optimisation strategy generator
 │   │   ├── planning_service.py # Dashboard aggregation + health score
 │   │   └── auth_service.py  # Token creation/verification
 │   └── middleware/
-│       └── auth.py          # get_current_user FastAPI dependency
+│       ├── auth.py          # get_current_user FastAPI dependency
+│       ├── rate_limit.py    # In-memory token-bucket rate limiter
+│       └── request_id.py    # Request ID propagation for log correlation
 ├── tests/                   # pytest suite
-├── alembic/                 # DB migrations
+├── alembic/                 # DB migrations — sole source of schema truth
 ├── requirements.txt
 ├── requirements-dev.txt
 └── Dockerfile
@@ -98,19 +112,51 @@ Each probe calls `quick_probability` to estimate the projected confidence. Resul
 ## Authentication Flow
 
 ```
-POST /auth/register  →  hash password (bcrypt)  →  insert User
-POST /auth/login     →  verify password          →  issue access + refresh JWT
-POST /auth/refresh   →  decode refresh JWT       →  issue new access + refresh JWT
-GET  /auth/me        →  decode access JWT        →  return User
+POST /auth/register  →  hash password (bcrypt)                →  insert User
+POST /auth/login     →  verify password                       →  access token in body;
+                                                                   refresh token + CSRF
+                                                                   token as cookies
+POST /auth/refresh   →  read refresh cookie, check CSRF header →  new access token in body;
+                                                                   rotated refresh + CSRF cookies
+POST /auth/logout    →  clear both cookies
+GET  /auth/me        →  decode access JWT                      →  return User
 ```
 
-Access token lifetime: 30 minutes.
-Refresh token lifetime: 7 days.
+Access token lifetime: 30 minutes. Refresh token lifetime: 7 days.
+
+**The refresh token is never returned in a response body** — it's set by the
+backend as an `httpOnly` cookie (`ns_refresh_token`, scoped to
+`/api/v1/auth`), so client-side JS (and anything that can read `localStorage`,
+e.g. XSS) can't read it. A second, readable cookie (`ns_csrf_token`) pairs
+with it: the frontend reads that cookie and echoes it back as an
+`X-CSRF-Token` header on `/auth/refresh`, and the backend rejects the request
+if the header doesn't match the cookie (double-submit CSRF defense — a
+cross-site page can't read the CSRF cookie to forge the header). Both cookies
+rotate on every successful refresh.
+
+Cookie attributes (`secure`, `samesite`) relax automatically when
+`DEBUG=true` so local HTTP dev still works; in production (`DEBUG=false`)
+they're `Secure` + `SameSite=None`, which requires HTTPS on both frontend and
+backend and an exact (non-wildcard) `CORS_ORIGINS` entry.
 
 All protected endpoints use `get_current_user` (FastAPI `Depends`):
 1. Extracts `Authorization: Bearer <token>` header
 2. Decodes JWT, validates `type == "access"`
 3. Loads `User` from DB, verifies `is_active == true`
+
+## Middleware
+
+Applied in `main.py`, outermost first:
+
+1. **`RateLimitMiddleware`** — in-memory token-bucket, per-IP (or per
+   `IP:path` on sensitive routes: login, register, simulate). Only honors
+   `X-Forwarded-For` when the direct peer is in `TRUSTED_PROXY_IPS`, and
+   evicts stale buckets (LRU cap + TTL sweep) so it can't grow unbounded.
+   Single-process only — see the Redis note in the root `README.md`.
+2. **`RequestIDMiddleware`** — assigns/propagates a request ID for log
+   correlation.
+3. **`CORSMiddleware`** — `allow_credentials=True` with an explicit origin
+   allowlist (required for the cookie-based refresh flow above).
 
 ## Environment Variables
 
@@ -120,6 +166,16 @@ See `.env.example` for the full list. Required variables:
 |-----------------|----------------------------------------------|
 | `DATABASE_URL`  | PostgreSQL asyncpg connection string         |
 | `JWT_SECRET_KEY`| 64-byte hex secret — generate once, keep safe|
+
+Notable optional variables (all have sane defaults — see `.env.example`):
+
+| Variable                        | Purpose                                                                 |
+|----------------------------------|--------------------------------------------------------------------------|
+| `TRUSTED_PROXY_IPS`              | Reverse proxy/LB IPs allowed to set `X-Forwarded-For` for the rate limiter. Leave empty with no proxy in front. |
+| `RATE_LIMIT_MAX_BUCKETS` / `RATE_LIMIT_BUCKET_TTL_SECONDS` | Caps on the in-memory rate limiter's memory use.       |
+| `COOKIE_DOMAIN`                   | Explicit cookie `Domain` attribute for the refresh-token cookie. Leave blank for host-only (the common case). |
+| `OPENAI_TIMEOUT_SECONDS` / `OPENAI_MAX_RETRIES` | Bound how long a single Copilot request can hang and how many times the SDK retries transient failures. |
+| `MONTE_CARLO_SEED`                | Fixed RNG seed for reproducible simulations. Leave blank for random.    |
 
 ## Running Tests
 

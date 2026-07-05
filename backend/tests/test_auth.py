@@ -3,6 +3,17 @@
 import pytest
 from httpx import AsyncClient
 
+import app.routers.auth as auth_module
+
+
+@pytest.fixture(autouse=True)
+def _reset_forgot_password_throttle() -> None:
+    # The per-email throttle bucket (AUDIT.md #13) is module-level state that
+    # otherwise persists across tests, since only the DB gets a fresh
+    # per-test fixture — without this, tests that reuse the same email would
+    # eventually trip each other's rate limit depending on run order.
+    auth_module._forgot_password_buckets.clear()
+
 
 @pytest.mark.asyncio
 class TestRegister:
@@ -281,3 +292,33 @@ class TestForgotResetPassword:
             json={"token": known_token, "new_password": "AnotherPass9!"},
         )
         assert second.status_code == 400
+
+    async def test_forgot_password_throttled_per_email(self, client: AsyncClient) -> None:
+        # AUDIT.md #13: capped independently of the generic IP rate limit,
+        # since that alone doesn't stop mass-issuing tokens for one target
+        # email from many source IPs.
+        email = "throttle-target@example.com"
+        for _ in range(3):
+            resp = await client.post(
+                "/api/v1/auth/forgot-password", json={"email": email}
+            )
+            assert resp.status_code == 200
+
+        throttled = await client.post(
+            "/api/v1/auth/forgot-password", json={"email": email}
+        )
+        assert throttled.status_code == 429
+
+    async def test_forgot_password_throttle_is_scoped_per_email(
+        self, client: AsyncClient
+    ) -> None:
+        for _ in range(3):
+            await client.post(
+                "/api/v1/auth/forgot-password",
+                json={"email": "exhausted@example.com"},
+            )
+        # A different email must be unaffected by the first one's throttle.
+        resp = await client.post(
+            "/api/v1/auth/forgot-password", json={"email": "unrelated@example.com"}
+        )
+        assert resp.status_code == 200

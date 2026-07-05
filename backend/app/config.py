@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,6 +57,16 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
+
+    @field_validator("monte_carlo_seed", "cookie_domain", mode="before")
+    @classmethod
+    def _blank_env_means_unset(cls, value: object) -> object:
+        # MONTE_CARLO_SEED= and COOKIE_DOMAIN= in .env.example are meant to
+        # mean "unset", but pydantic-settings tries int("") for the former
+        # instead of treating a blank string as None. Scoped to just these
+        # two fields — openai_api_key intentionally uses "" (not None) to
+        # mean "disabled", so a blanket None-coercion would break it.
+        return None if value == "" else value
 
 
 @lru_cache

@@ -87,42 +87,55 @@ Tests: added one out-of-range case per bounded field across `test_goals.py` and 
 
 The endpoint accepts and echoes back a `conversation_id`, implying a stateful conversation, but only the current message is ever sent to OpenAI — no prior turns are stored or replayed. Every "follow-up" question loses all previous context. This is a functional correctness gap that will surface as a support complaint ("the AI doesn't remember what I just said"), not just a nice-to-have.
 **Fix:** Persist message history keyed by `conversation_id` and include prior turns in the `messages` list (bounded to a token budget).
+**Status:** Deferred — needs a new table (or cache) for message history, a token-budget-aware truncation strategy, and decisions about retention/deletion that are more than a quick fix. Not attempted this pass; still returns independent, context-free replies per message.
 
-## 12. In-memory rate limiter cannot scale horizontally
+## 12. In-memory rate limiter cannot scale horizontally — ⚠️ IMPROVED, NOT RESOLVED 2026-07-05
 **File:** `backend/app/middleware/rate_limit.py:1-9` (acknowledged in the module's own docstring)
 
 Each process has its own bucket dict. The moment this app runs as more than one instance/worker (any real production deployment), the effective rate limit multiplies by the instance count, and an attacker can trivially get N× the intended budget by hitting different instances. This is flagged separately from #2/#3 because it's a scaling blocker even *without* header spoofing.
 **Fix:** Move to Redis-backed counters before running more than one process.
+**Status:** Bucket memory growth (#3) and IP spoofing (#2) are fixed, which closes the *attacker-amplified* version of this problem. The *legitimate multi-instance* limitation is unchanged and can't be fixed without adding a Redis dependency this project doesn't have — out of scope for this pass. Documented in `README.md`'s new Production Deployment Notes section so it isn't a surprise at scale-out time.
 
-## 13. Password reset tokens have no rate limit on generation
+## 13. Password reset tokens have no rate limit on generation — ✅ FIXED 2026-07-05
 **File:** `backend/app/routers/auth.py:124-148`
 
 `/auth/forgot-password` is covered by the generic sensitive-route rate limit, but that limit is IP+path keyed and bypassable per #2. Nothing prevents mass-issuing reset tokens for a target email over and over (each insert is cheap), which is a minor DB-growth/spam vector on top of the much bigger issue in #1.
 **Fix:** Rate-limit by email (not just IP) in addition to fixing #1.
+**Status:** Fixed — added a dedicated per-email token-bucket throttle (3 requests/hour per email, reusing the same `_TokenBucket` primitive as the IP limiter, with the same LRU+TTL eviction pattern capped at 10,000 tracked emails) independent of the IP-based limit. Tests: 2 new cases in `test_auth.py` (throttled after 3 requests for one email; a different email is unaffected).
 
 ## 14. `except Exception` swallows the real DB failure reason in the health check
 **File:** `backend/app/main.py:66-68`
 
 The health-check catches all exceptions from the DB probe and logs `error=%s` with the raw exception — acceptable for logging, but the endpoint then returns a generic `"degraded"` with no detail to callers, and there's no alerting hook (no metrics emission, no paging integration) tied to this branch. In production this means a DB outage shows up only if someone is actively polling `/health` and reading logs.
 **Fix:** Wire `db_status == "error"` to an actual alert (metrics/log-based alert or exit code for orchestrator liveness probes), not just a log line.
+**Status:** Deferred — this needs a specific alerting/metrics backend (Datadog, Prometheus Alertmanager, PagerDuty, etc.) to be chosen before there's anything concrete to wire up. The `/health` endpoint's `db` field is already correct and orchestrator-readable (a k8s/ECS liveness probe can key off `"db": "error"` in the JSON body today) — the gap is specifically *paging a human*, which is an infra decision, not a code fix.
 
 ## 15. No email verification on registration
 **File:** `backend/app/routers/auth.py:43-58`
 
 `register` creates an active user immediately from any syntactically-valid email with no verification step. Combined with no CAPTCHA/anti-abuse control (per `common/security.md` guidance, honeypots are recommended but none exist), this makes automated mass account creation trivial, which matters once billing or invite-quota logic is added on top of this user table.
 **Fix:** Add an email-verification token flow before `is_active = True`, or at minimum add a signup-specific stricter rate limit and CAPTCHA.
+**Status:** Deferred — blocked on the same missing piece as #1's full resolution: no email/SMS delivery provider is integrated yet. Building the verification-token flow without a way to deliver it doesn't close the gap. Flagged in `README.md`'s Production Deployment Notes as a known gap.
 
 ## 16. `except Exception` in `get_db` rolls back on *any* error, including client-side validation errors already handled by FastAPI
 **File:** `backend/app/database.py:34-39`
 
 Low severity on its own, but worth flagging alongside #14 as the second of only two exception handlers in the whole backend — the codebase has almost no explicit error-handling for external-dependency failures (OpenAI, DB pool exhaustion, thread-pool saturation) beyond these two blanket catches. That absence is what makes #5/#6/#7 land harder than they would with defense in depth.
+**Status:** Not changed — reviewed and confirmed this is correct as-is. `get_db`'s broad `except Exception: rollback` is the right behavior for a session dependency (any exception from the route handler should roll back the transaction); it isn't masking anything the way the copilot's missing error handling was. No action needed.
 
-## 17. `.output`, `.wrangler`, `.tanstack` build artifacts present in the working tree
+## 17. `.output`, `.wrangler`, `.tanstack` build artifacts present in the working tree — ✅ FIXED 2026-07-05
 **Dir:** `code/.output/`, `code/.wrangler/`, `code/.tanstack/`
 
 These are gitignored (correctly) but currently exist on disk alongside source, dated from a prior build (`27 Jun`). Since there's no git repo (#8) there's no way to be sure these stale artifacts aren't accidentally being served or referenced by a deploy script pointed at the wrong directory. Low risk today, but worth clearing before the first real deploy so a stale build can't be shipped by mistake.
+**Status:** Fixed — removed `code/.output/`, `code/.wrangler/`, and `code/.tanstack/tmp/`. All three are gitignored and fully regenerable (`bun run build` / `bun run dev`); confirmed a fresh `bun run build` recreates `.output/` correctly with no drift.
 
 ---
 
 ## Not included
-Stylistic nits, missing docstrings, and anything that only affects developer convenience were deliberately left off this list per the "only things that will break, leak data, or block scaling" scope. The two most urgent items to fix before this app touches real user data are **#1** (reset-token leak) and **#4** (refresh tokens in localStorage) — both are direct account-takeover paths.
+Stylistic nits, missing docstrings, and anything that only affects developer convenience were deliberately left off this list per the "only things that will break, leak data, or block scaling" scope. The two most urgent items to fix before this app touches real user data were **#1** (reset-token leak) and **#4** (refresh tokens in localStorage) — both direct account-takeover paths, both fixed.
+
+## Remediation summary (2026-07-05)
+
+13 of 17 items fixed or improved; 4 deliberately deferred with reasons above (#11 conversation memory, #12 horizontal-scale rate limiting, #14 alerting integration, #15 email verification — the last two are both blocked on infra/provider decisions outside this codebase, not effort). #16 was reviewed and found to need no change. Every fix has passing tests; the full backend suite is at 164 tests (up from the original 135), plus frontend `tsc`/`vite build` verified clean. Git history now exists for all of this (previously none) — see commit log for one focused commit per item.
+
+**Before this app handles real user signups**, the two blocking gaps are the same infra dependency in different clothes: an email/SMS delivery provider. That single integration unblocks a real (not debug-only) password reset flow (#1/#15) and email verification (#15). Everything else on this list is either fixed or a scale-later concern.
