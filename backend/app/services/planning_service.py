@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import date
 
@@ -23,15 +24,23 @@ async def refresh_goal_probabilities(
     goals = list(result.scalars().all())
 
     today = date.today()
-    for goal in goals:
-        years = max(0.1, (goal.target_date - today).days / 365.25)
-        prob = await quick_probability_async(
-            initial_amount=goal.current_amount,
-            monthly_contribution=goal.monthly_contribution,
-            years_to_goal=years,
-            risk_profile=goal.risk_profile,
-            target_amount=goal.target_amount,
+    # Each simulation is an independent thread-pool round trip with no shared
+    # state (the DB session isn't touched until results come back), so
+    # dispatching them concurrently turns N sequential round trips into one.
+    probabilities = await asyncio.gather(
+        *(
+            quick_probability_async(
+                initial_amount=goal.current_amount,
+                monthly_contribution=goal.monthly_contribution,
+                years_to_goal=max(0.1, (goal.target_date - today).days / 365.25),
+                risk_profile=goal.risk_profile,
+                target_amount=goal.target_amount,
+            )
+            for goal in goals
         )
+    )
+
+    for goal, prob in zip(goals, probabilities, strict=True):
         goal.probability = round(prob, 1)
         goal.on_track = prob >= 70.0
         session.add(goal)

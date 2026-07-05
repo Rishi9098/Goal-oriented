@@ -66,10 +66,12 @@ The module docstring says the endpoint "Falls back to a rule-based responder whe
 `git status` fails with "not a git repository." There is no commit history, no rollback point, no code review trail, no CI/CD gate, and no way to tell what changed between the current state and any prior working state. For a codebase already handling auth, JWTs, and financial data, this blocks any real review or safe-deploy process and is a single point of catastrophic loss if the working directory is ever corrupted or overwritten.
 **Fix:** `git init`, commit current state, and push to a remote before any further changes.
 
-## 9. `refresh_goal_probabilities` runs Monte Carlo simulations sequentially per goal, not in parallel
+## 9. `refresh_goal_probabilities` runs Monte Carlo simulations sequentially per goal, not in parallel — ✅ FIXED 2026-07-05
 **File:** `backend/app/services/planning_service.py:26-37`
 
 Every call to `/dashboard` or `/reports/summary` awaits `quick_probability_async` once per active goal, one at a time, inside a plain `for` loop. Each call is a full thread-pool round trip (2,000-path simulation). A user with 8 goals pays 8x the latency serially instead of concurrently. Under load this also serializes against the same shared default thread-pool executor used elsewhere in the process.
+**Status:** Fixed — dispatch now uses `asyncio.gather` over all goals' `quick_probability_async` calls instead of a sequential `for`/`await` loop; results are zipped back onto the corresponding `Goal` in order (`zip(..., strict=True)` so a mismatched result count fails loudly instead of silently misassigning). Still bounded by the shared default thread-pool executor's worker count (unchanged, out of scope here) and by CPU core count for the underlying NumPy work — this fix removes the *artificial* serialization, not the physical compute cost.
+Tests: `test_planning_service.py::TestRefreshGoalProbabilitiesConcurrency` (2 new cases, using the real SQLite-backed `db` fixture) — one proves >1 simulation is in-flight at once (would be impossible with the old sequential loop), the other proves each result maps back to the correct goal after concurrent dispatch. Full backend suite: 152 passed.
 **Fix:** Dispatch with `asyncio.gather(*[quick_probability_async(...) for g in goals])`.
 
 ## 10. No upper bound on financial input fields — Monte Carlo can be driven to `inf`/`NaN`
