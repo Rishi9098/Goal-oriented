@@ -17,6 +17,12 @@ target-version = "py312"
 select = ["E", "F", "I", "N", "UP", "B"]
 ignore = []
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection pattern requires calling Depends()/Query()/
+# Body() as an argument default — that's how the framework discovers them.
+# Without this, B008 false-positives on every route handler in the app.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true

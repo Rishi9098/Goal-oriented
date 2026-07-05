@@ -2,8 +2,9 @@ import hashlib
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Literal, TypedDict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +18,6 @@ from app.schemas.user import (
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     LoginRequest,
-    RefreshRequest,
     ResetPasswordRequest,
     TokenResponse,
     UserCreate,
@@ -36,10 +36,79 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
 
 _RESET_TOKEN_TTL_HOURS = 1
+_CSRF_HEADER_NAME = "X-CSRF-Token"
+
+# The refresh cookie is httpOnly and scoped to the refresh/logout routes only
+# (never sent on every request). The CSRF cookie must be readable by frontend
+# JS so it can be echoed back as a header — that's the double-submit check.
+_REFRESH_COOKIE_PATH = "/api/v1/auth"
 
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+class _CookieAttrs(TypedDict):
+    httponly: bool
+    secure: bool
+    samesite: Literal["lax", "none"]
+    domain: str | None
+    path: str
+
+
+def _cookie_kwargs(*, path: str, httponly: bool) -> _CookieAttrs:
+    # SameSite=None requires Secure; browsers reject the combination
+    # SameSite=None + Secure=False outright. In debug (local HTTP dev) we
+    # fall back to Lax + non-Secure so the cookie still works over plain
+    # http://localhost.
+    return {
+        "httponly": httponly,
+        "secure": not settings.debug,
+        "samesite": "none" if not settings.debug else "lax",
+        "domain": settings.cookie_domain,
+        "path": path,
+    }
+
+
+def _set_auth_cookies(response: Response, *, refresh_token: str) -> None:
+    csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key=settings.refresh_cookie_name,
+        value=refresh_token,
+        max_age=settings.refresh_token_expire_days * 86400,
+        **_cookie_kwargs(path=_REFRESH_COOKIE_PATH, httponly=True),
+    )
+    response.set_cookie(
+        key=settings.csrf_cookie_name,
+        value=csrf_token,
+        max_age=settings.refresh_token_expire_days * 86400,
+        **_cookie_kwargs(path="/", httponly=False),
+    )
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(settings.refresh_cookie_name, path=_REFRESH_COOKIE_PATH)
+    response.delete_cookie(settings.csrf_cookie_name, path="/")
+
+
+def _read_refresh_token(request: Request) -> str:
+    token = request.cookies.get(settings.refresh_cookie_name)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="No refresh session found"
+        )
+    return token
+
+
+def _verify_csrf(request: Request) -> None:
+    header_value = request.headers.get(_CSRF_HEADER_NAME)
+    cookie_value = request.cookies.get(settings.csrf_cookie_name)
+    if not header_value or not cookie_value or not secrets.compare_digest(
+        header_value, cookie_value
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Missing or invalid CSRF token"
+        )
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -61,7 +130,9 @@ async def register(body: UserCreate, db: AsyncSession = Depends(get_db)) -> User
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+async def login(
+    body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)
+) -> TokenResponse:
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
     if user is None or not verify_password(body.password, user.hashed_password):
@@ -74,16 +145,19 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> Token
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account disabled",
         )
-    return TokenResponse(
-        access_token=create_access_token(str(user.id)),
-        refresh_token=create_refresh_token(str(user.id)),
-    )
+    _set_auth_cookies(response, refresh_token=create_refresh_token(str(user.id)))
+    return TokenResponse(access_token=create_access_token(str(user.id)))
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+async def refresh(
+    request: Request, response: Response, db: AsyncSession = Depends(get_db)
+) -> TokenResponse:
+    refresh_token = _read_refresh_token(request)
+    _verify_csrf(request)
+
     try:
-        user_id = get_user_id_from_token(body.refresh_token, expected_type="refresh")
+        user_id = get_user_id_from_token(refresh_token, expected_type="refresh")
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -95,10 +169,15 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> T
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    return TokenResponse(
-        access_token=create_access_token(user_id),
-        refresh_token=create_refresh_token(user_id),
-    )
+    # Rotate the refresh token (and its CSRF pair) on every use to shrink the
+    # replay window if a token is ever leaked.
+    _set_auth_cookies(response, refresh_token=create_refresh_token(user_id))
+    return TokenResponse(access_token=create_access_token(user_id))
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(response: Response) -> None:
+    _clear_auth_cookies(response)
 
 
 @router.get("/me", response_model=UserResponse)

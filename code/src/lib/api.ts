@@ -55,19 +55,27 @@ function toGoalPatch(patch: Partial<Goal>): Partial<RawGoal> {
 }
 
 // ── Token management ──────────────────────────────────────────────────────────
+//
+// The refresh token lives only in a backend-set httpOnly cookie (never
+// readable by JS, so an XSS payload can't exfiltrate it) — see AUDIT.md #4.
+// The access token is short-lived and low-value enough to keep in
+// localStorage for the simple "is there a session" checks in route guards.
 
 function getToken(): string | null {
   return localStorage.getItem("ns_access_token");
 }
 
-export function setTokens(access: string, refresh: string): void {
+export function setAccessToken(access: string): void {
   localStorage.setItem("ns_access_token", access);
-  localStorage.setItem("ns_refresh_token", refresh);
 }
 
-export function clearTokens(): void {
+export function clearAccessToken(): void {
   localStorage.removeItem("ns_access_token");
-  localStorage.removeItem("ns_refresh_token");
+}
+
+function getCsrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|; )ns_csrf_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 // ── Core fetch wrapper ────────────────────────────────────────────────────────
@@ -75,16 +83,16 @@ export function clearTokens(): void {
 let _refreshPromise: Promise<void> | null = null;
 
 async function _doRefresh(): Promise<void> {
-  const rt = localStorage.getItem("ns_refresh_token");
-  if (!rt) throw new Error("No refresh token");
+  const csrf = getCsrfToken();
+  if (!csrf) throw new Error("No refresh session");
   const resp = await fetch(`${BASE_URL}/auth/refresh`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: rt }),
+    credentials: "include",
+    headers: { "X-CSRF-Token": csrf },
   });
   if (!resp.ok) throw new Error("Refresh failed");
-  const data = (await resp.json()) as { access_token: string; refresh_token: string };
-  setTokens(data.access_token, data.refresh_token);
+  const data = (await resp.json()) as { access_token: string };
+  setAccessToken(data.access_token);
 }
 
 function parseError(body: unknown, httpStatus: number): string {
@@ -107,7 +115,11 @@ async function apiFetch<T>(
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const resp = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const resp = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
 
   if (resp.status === 401 && !_retry && BASE_URL) {
     if (!_refreshPromise) {
@@ -117,7 +129,7 @@ async function apiFetch<T>(
       await _refreshPromise;
       return apiFetch<T>(path, options, true);
     } catch {
-      clearTokens();
+      clearAccessToken();
       window.location.href = "/auth/sign-in";
       throw new Error("Session expired. Please sign in again.");
     }
@@ -328,11 +340,16 @@ const MOCK_ASSUMPTIONS: FinancialAssumptions = {
 export const auth = {
   login: (email: string, password: string) =>
     BASE_URL
-      ? apiFetch<{ access_token: string; refresh_token: string }>("/auth/login", {
+      ? apiFetch<{ access_token: string }>("/auth/login", {
           method: "POST",
           body: JSON.stringify({ email, password }),
         })
-      : delay({ access_token: "mock-token", refresh_token: "mock-refresh" }),
+      : delay({ access_token: "mock-token" }),
+
+  logout: () =>
+    BASE_URL
+      ? apiFetch<void>("/auth/logout", { method: "POST" }).catch(() => undefined)
+      : delay(undefined),
 
   register: (email: string, password: string, fullName?: string) =>
     BASE_URL

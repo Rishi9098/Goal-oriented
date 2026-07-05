@@ -11,23 +11,31 @@ The endpoint generates a password-reset token and returns it directly in the JSO
 **Fix:** Never include `reset_token` in the HTTP response. Send it via an email/SMS provider. If no provider is wired up yet, gate the field behind `settings.debug` so it can never leak in production.
 **Status:** Fixed — `reset_token` is now only included in the response when `settings.debug` is `True` (local dev / `.env` with `DEBUG=true`); it is `None` whenever `DEBUG=false` (current production-like default). `test_auth.py` updated: the old test asserting the token leaks was replaced with `test_forgot_password_known_email_does_not_leak_token` (asserts `reset_token is None`), and the two tests that exercise the full reset flow (`test_reset_password_with_valid_token`, `test_reset_password_token_used_twice_returns_400`) now `monkeypatch` `secrets.token_urlsafe` to a known value instead of reading the token from the response. Full backend suite: 135 passed. Note: an email/SMS delivery integration is still needed before this flow is usable in production — the fix only stops the leak, it doesn't add a way for the real user to receive the token.
 
-## 2. Rate limiter trusts `X-Forwarded-For` unconditionally — auth brute-force and cost limits are bypassable
+## 2. Rate limiter trusts `X-Forwarded-For` unconditionally — auth brute-force and cost limits are bypassable — ✅ FIXED 2026-07-05
 **File:** `backend/app/middleware/rate_limit.py:59-63`
 
 `_get_client_ip` takes the first value of the client-supplied `X-Forwarded-For` header with no check that the request actually came through a trusted proxy. Any caller can set an arbitrary/random `X-Forwarded-For` on every request to get a fresh rate-limit bucket each time, completely bypassing the limiter on `/auth/login`, `/auth/register`, and `/simulate`. This turns the login-brute-force protection and the paid-OpenAI-call throttling (see #5) into a no-op for a deliberate attacker.
 **Fix:** Only trust `X-Forwarded-For`/`X-Real-IP` when the request's direct peer is a known reverse proxy (e.g. compare `request.client.host` against an allowlist), otherwise use `request.client.host` directly.
+**Status:** Fixed — added `settings.trusted_proxy_ips` (empty by default). `X-Forwarded-For` is only honored when `request.client.host` is in that allowlist; otherwise the direct TCP peer is always used, so spoofing the header no longer mints a new bucket. Deploy note: if this runs behind a real load balancer/reverse proxy, its IP must be added to `TRUSTED_PROXY_IPS` or all traffic will share one bucket keyed by the proxy's own IP.
 
-## 3. Rate-limiter bucket dict is never evicted — unbounded memory growth (DoS)
+## 3. Rate-limiter bucket dict is never evicted — unbounded memory growth (DoS) — ✅ FIXED 2026-07-05
 **File:** `backend/app/middleware/rate_limit.py:54-56, 77`
 
 `self._buckets` is a `defaultdict` keyed by `ip` or `ip:path` that grows forever — there is no TTL, LRU cap, or cleanup pass. Combined with #2 (attacker can mint unlimited distinct IPs via header spoofing), this is a straightforward memory-exhaustion DoS: every spoofed IP creates a new permanent dict entry and `_TokenBucket` object that is never freed for the life of the process.
 **Fix:** Cap bucket count with an LRU eviction policy, or move to Redis with key TTLs as the module's own docstring already recommends.
+**Status:** Fixed — buckets are now an `OrderedDict` with O(1) LRU eviction capped at `settings.rate_limit_max_buckets` (default 50,000), plus a periodic TTL sweep (`rate_limit_bucket_ttl_seconds`, default 600s) that drops buckets idle longer than the TTL. Redis migration is still the right move before running more than one process — see #12.
 
-## 4. JWT access **and** refresh tokens stored in `localStorage`
+## 4. JWT access **and** refresh tokens stored in `localStorage` — ✅ FIXED 2026-07-05
 **File:** `code/src/lib/api.ts:60-70`
 
 Both the short-lived access token and the 7-day refresh token (`refresh_token_expire_days: int = 7` in `backend/app/config.py:21`) are stored in `localStorage`. Any XSS on the page (a compromised dependency, a third-party script, a reflected input) can read `localStorage` synchronously and exfiltrate both tokens, giving the attacker a week of persistent account access with no way for the user to detect or revoke it short of a server-side token-family invalidation (which doesn't exist — see #8).
 **Fix:** Move refresh tokens to an `httpOnly`, `Secure`, `SameSite=Strict` cookie set by the backend; keep only the short-lived access token in memory/localStorage.
+**Status:** Fixed, scoped as agreed: only the refresh token moved to a cookie; the access token stays in localStorage (low blast radius — it expires in 30 minutes and a stolen one can't be renewed without the httpOnly refresh cookie).
+- Backend (`backend/app/routers/auth.py`): `/auth/login` and `/auth/refresh` now set `ns_refresh_token` (httpOnly, `Secure` unless `debug`, `SameSite=None` unless `debug`) and `ns_csrf_token` (readable, same attributes) cookies instead of returning `refresh_token` in the JSON body. `TokenResponse` no longer has a `refresh_token` field at all. `/auth/refresh` reads the cookie, requires a matching `X-CSRF-Token` header (double-submit CSRF defense — cross-site requests can't read the CSRF cookie to forge the header), and rotates both cookies on every use. Added `/auth/logout` to clear both cookies.
+- Frontend (`code/src/lib/api.ts`): `setTokens`/`clearTokens` replaced with `setAccessToken`/`clearAccessToken`; refresh flow reads the CSRF cookie via `document.cookie` and calls `/auth/refresh` with `credentials: "include"`. All `fetch` calls now send `credentials: "include"`. Added `auth.logout()`, wired into sign-out and delete-account flows.
+- CORS already had `allow_credentials=True` with an explicit origin allowlist (required for cross-site cookies — can't combine with a wildcard origin).
+- Tests: `test_auth.py` TestLogin/TestRefresh rewritten for the cookie contract (6 new cases: CSRF-missing → 403, CSRF-mismatch → 403, no-session → 401, invalid-token → 401, rotation, logout-clears-session). `conftest.py`'s test client now uses `https://test` as `base_url` so its cookie jar honors `Secure` the same way a real browser would — this is also what caught the bug during development (cookies silently weren't being sent over the plain-`http://test` fixture). Full backend suite: 147 passed.
+- Deferred, not done here: refresh-token family/session revocation list (so a leaked refresh token before rotation can be force-invalidated server-side) — bigger feature, not part of this pass.
 
 ## 5. No rate limit or timeout on the OpenAI Copilot endpoint — unbounded billing exposure
 **File:** `backend/app/routers/copilot.py:98-109`

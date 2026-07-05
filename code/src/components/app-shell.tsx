@@ -11,7 +11,7 @@ import {
   Search,
   LogOut,
 } from "lucide-react";
-import { auth, api, clearTokens } from "@/lib/api";
+import { auth, api, clearAccessToken } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -44,7 +44,10 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
   }, []);
 
   function handleSignOut() {
-    clearTokens();
+    // Best-effort: clear the server-side refresh cookie too, but don't let a
+    // network failure block the local sign-out.
+    void auth.logout();
+    clearAccessToken();
     navigate({ to: "/auth/sign-in", replace: true });
   }
 

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArrowRight, Check, Eye, EyeOff, Loader2, Sparkles } from "lucide-react";
-import { auth, api, setTokens } from "@/lib/api";
+import { auth, api, setAccessToken } from "@/lib/api";
 import type { Asset, Expense, IncomeSource, Liability } from "@/lib/api";
 import type { Goal } from "@/lib/mock-data";
 import {
@@ -141,7 +141,7 @@ function Onboarding() {
     try {
       await auth.register(account.email, account.password, account.fullName);
       const tokens = await auth.login(account.email, account.password);
-      setTokens(tokens.access_token, tokens.refresh_token);
+      setAccessToken(tokens.access_token);
       advance();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed. Please try again.");

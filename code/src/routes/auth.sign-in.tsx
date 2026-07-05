@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react";
-import { auth, setTokens } from "@/lib/api";
+import { auth, setAccessToken } from "@/lib/api";
 
 export const Route = createFileRoute("/auth/sign-in")({
   head: () => ({ meta: [{ title: "Sign in — Northstar" }] }),
@@ -22,7 +22,7 @@ function SignIn() {
     setLoading(true);
     try {
       const tokens = await auth.login(email, password);
-      setTokens(tokens.access_token, tokens.refresh_token);
+      setAccessToken(tokens.access_token);
       navigate({ to: "/app" });
     } catch (err) {
       setError(

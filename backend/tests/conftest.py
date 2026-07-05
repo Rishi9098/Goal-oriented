@@ -44,8 +44,11 @@ async def app(db: AsyncSession) -> FastAPI:
 
 @pytest_asyncio.fixture(scope="function")
 async def client(app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
+    # https:// so the client's cookie jar honors Secure cookies the same way
+    # a real browser would in production (the refresh-token cookie is
+    # Secure+SameSite=None whenever settings.debug is False).
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="https://test"
     ) as ac:
         yield ac
 

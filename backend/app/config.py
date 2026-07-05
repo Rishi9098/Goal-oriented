@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
+    # Refresh token is delivered as an httpOnly cookie rather than in the
+    # response body (see AUDIT.md #4). secure/samesite relax automatically
+    # in debug mode so local HTTP dev still works.
+    refresh_cookie_name: str = "ns_refresh_token"
+    csrf_cookie_name: str = "ns_csrf_token"
+    cookie_domain: str | None = None
+
     # CORS
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 

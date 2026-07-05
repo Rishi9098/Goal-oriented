@@ -1,7 +1,6 @@
 """Integration tests for authentication endpoints."""
 
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient
 
 
@@ -46,8 +45,12 @@ class TestLogin:
         assert resp.status_code == 200
         data = resp.json()
         assert "access_token" in data
-        assert "refresh_token" in data
+        # Regression guard for AUDIT #4: the refresh token must never appear
+        # in the JSON body — it belongs only in the httpOnly cookie.
+        assert "refresh_token" not in data
         assert data["token_type"] == "bearer"
+        assert client.cookies.get("ns_refresh_token") is not None
+        assert client.cookies.get("ns_csrf_token") is not None
 
     async def test_login_wrong_password(self, client: AsyncClient):
         await client.post(
@@ -70,27 +73,75 @@ class TestLogin:
 
 @pytest.mark.asyncio
 class TestRefresh:
-    async def test_refresh_returns_new_access_token(self, client: AsyncClient):
+    async def _login(self, client: AsyncClient, email: str = "refresh@example.com") -> None:
         await client.post(
-            "/api/v1/auth/register",
-            json={"email": "refresh@example.com", "password": "ValidPass1!"},
+            "/api/v1/auth/register", json={"email": email, "password": "ValidPass1!"}
         )
-        login = await client.post(
-            "/api/v1/auth/login",
-            json={"email": "refresh@example.com", "password": "ValidPass1!"},
+        await client.post(
+            "/api/v1/auth/login", json={"email": email, "password": "ValidPass1!"}
         )
-        refresh_token = login.json()["refresh_token"]
+
+    async def test_refresh_returns_new_access_token(self, client: AsyncClient):
+        await self._login(client)
+        csrf = client.cookies["ns_csrf_token"]
         resp = await client.post(
-            "/api/v1/auth/refresh", json={"refresh_token": refresh_token}
+            "/api/v1/auth/refresh", headers={"X-CSRF-Token": csrf}
         )
         assert resp.status_code == 200
         assert "access_token" in resp.json()
+        assert "refresh_token" not in resp.json()
 
-    async def test_refresh_invalid_token_returns_401(self, client: AsyncClient):
+    async def test_refresh_rotates_csrf_cookie(self, client: AsyncClient):
+        await self._login(client)
+        first_csrf = client.cookies["ns_csrf_token"]
+        await client.post("/api/v1/auth/refresh", headers={"X-CSRF-Token": first_csrf})
+        assert client.cookies["ns_csrf_token"] != first_csrf
+
+    async def test_refresh_without_session_cookie_returns_401(self, client: AsyncClient):
+        resp = await client.post("/api/v1/auth/refresh", headers={"X-CSRF-Token": "x"})
+        assert resp.status_code == 401
+
+    async def test_refresh_without_csrf_header_returns_403(self, client: AsyncClient):
+        await self._login(client)
+        resp = await client.post("/api/v1/auth/refresh")
+        assert resp.status_code == 403
+
+    async def test_refresh_with_mismatched_csrf_header_returns_403(self, client: AsyncClient):
+        await self._login(client)
         resp = await client.post(
-            "/api/v1/auth/refresh", json={"refresh_token": "not.a.valid.token"}
+            "/api/v1/auth/refresh", headers={"X-CSRF-Token": "not-the-real-token"}
+        )
+        assert resp.status_code == 403
+
+    async def test_refresh_invalid_refresh_token_returns_401(self, client: AsyncClient):
+        client.cookies.set("ns_refresh_token", "not.a.valid.token", path="/api/v1/auth")
+        client.cookies.set("ns_csrf_token", "matching-csrf-value", path="/")
+        resp = await client.post(
+            "/api/v1/auth/refresh", headers={"X-CSRF-Token": "matching-csrf-value"}
         )
         assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+class TestLogout:
+    async def test_logout_clears_refresh_session(self, client: AsyncClient):
+        await client.post(
+            "/api/v1/auth/register",
+            json={"email": "logout@example.com", "password": "ValidPass1!"},
+        )
+        await client.post(
+            "/api/v1/auth/login",
+            json={"email": "logout@example.com", "password": "ValidPass1!"},
+        )
+        resp = await client.post("/api/v1/auth/logout")
+        assert resp.status_code == 204
+        assert client.cookies.get("ns_refresh_token") is None
+
+        # The cleared cookie means refresh can no longer succeed.
+        refresh = await client.post(
+            "/api/v1/auth/refresh", headers={"X-CSRF-Token": "whatever"}
+        )
+        assert refresh.status_code == 401
 
 
 @pytest.mark.asyncio

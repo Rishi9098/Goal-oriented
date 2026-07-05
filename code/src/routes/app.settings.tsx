@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Bell, Check, Eye, EyeOff, KeyRound, Loader2, Link2, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { auth, clearTokens } from "@/lib/api";
+import { auth, clearAccessToken } from "@/lib/api";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({ meta: [{ title: "Settings — Northstar" }] }),
@@ -218,7 +218,8 @@ function DeleteAccountSection() {
     setError("");
     try {
       await auth.deleteAccount();
-      clearTokens();
+      await auth.logout();
+      clearAccessToken();
       await navigate({ to: "/auth/sign-in" });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to delete account");
