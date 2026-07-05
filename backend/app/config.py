@@ -1,4 +1,5 @@
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,6 +35,12 @@ class Settings(BaseSettings):
     # Rate limiting
     rate_limit_requests: int = 100
     rate_limit_window_seconds: int = 60
+    rate_limit_bucket_ttl_seconds: int = 600
+    rate_limit_max_buckets: int = 50_000
+    # IPs of reverse proxies/load balancers allowed to set X-Forwarded-For.
+    # Empty by default: X-Forwarded-For is ignored and the direct TCP peer
+    # is used, since an untrusted client can set this header to any value.
+    trusted_proxy_ips: list[str] = []
 
     model_config = SettingsConfigDict(
         env_file=".env",
