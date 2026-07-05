@@ -474,7 +474,7 @@ export const api = {
 
   // ── Income ─────────────────────────────────────────────────────────────────
   getIncome: (): Promise<IncomeSource[]> =>
-    BASE_URL ? apiFetch<IncomeSource[]>("/income") : delay<IncomeSource[]>([]),
+    BASE_URL ? apiFetch<IncomeSource[]>("/financials/income") : delay<IncomeSource[]>([]),
 
   createIncome: (data: {
     source_type: string;
@@ -482,7 +482,7 @@ export const api = {
     annual_amount: number;
   }): Promise<IncomeSource> =>
     BASE_URL
-      ? apiFetch<IncomeSource>("/income", { method: "POST", body: JSON.stringify(data) })
+      ? apiFetch<IncomeSource>("/financials/income", { method: "POST", body: JSON.stringify(data) })
       : delay<IncomeSource>({
           id: `i_${Date.now()}`,
           source_type: data.source_type,
@@ -492,11 +492,11 @@ export const api = {
         }),
 
   deleteIncome: (id: string): Promise<void> =>
-    BASE_URL ? apiFetch<void>(`/income/${id}`, { method: "DELETE" }) : delay(undefined),
+    BASE_URL ? apiFetch<void>(`/financials/income/${id}`, { method: "DELETE" }) : delay(undefined),
 
   // ── Expenses ───────────────────────────────────────────────────────────────
   getExpenses: (): Promise<Expense[]> =>
-    BASE_URL ? apiFetch<Expense[]>("/expenses") : delay<Expense[]>([]),
+    BASE_URL ? apiFetch<Expense[]>("/financials/expenses") : delay<Expense[]>([]),
 
   createExpense: (data: {
     category: string;
@@ -504,7 +504,7 @@ export const api = {
     monthly_amount: number;
   }): Promise<Expense> =>
     BASE_URL
-      ? apiFetch<Expense>("/expenses", { method: "POST", body: JSON.stringify(data) })
+      ? apiFetch<Expense>("/financials/expenses", { method: "POST", body: JSON.stringify(data) })
       : delay<Expense>({
           id: `e_${Date.now()}`,
           category: data.category,
@@ -514,11 +514,11 @@ export const api = {
         }),
 
   deleteExpense: (id: string): Promise<void> =>
-    BASE_URL ? apiFetch<void>(`/expenses/${id}`, { method: "DELETE" }) : delay(undefined),
+    BASE_URL ? apiFetch<void>(`/financials/expenses/${id}`, { method: "DELETE" }) : delay(undefined),
 
   // ── Assets ─────────────────────────────────────────────────────────────────
   getAssets: (): Promise<Asset[]> =>
-    BASE_URL ? apiFetch<Asset[]>("/assets") : delay<Asset[]>([]),
+    BASE_URL ? apiFetch<Asset[]>("/financials/assets") : delay<Asset[]>([]),
 
   createAsset: (data: {
     asset_type: string;
@@ -527,7 +527,7 @@ export const api = {
     current_value: number;
   }): Promise<Asset> =>
     BASE_URL
-      ? apiFetch<Asset>("/assets", { method: "POST", body: JSON.stringify(data) })
+      ? apiFetch<Asset>("/financials/assets", { method: "POST", body: JSON.stringify(data) })
       : delay<Asset>({
           id: `a_${Date.now()}`,
           asset_type: data.asset_type,
@@ -542,7 +542,7 @@ export const api = {
     patch: { current_value?: number; institution?: string; description?: string },
   ): Promise<Asset> =>
     BASE_URL
-      ? apiFetch<Asset>(`/assets/${id}`, { method: "PATCH", body: JSON.stringify(patch) })
+      ? apiFetch<Asset>(`/financials/assets/${id}`, { method: "PATCH", body: JSON.stringify(patch) })
       : delay<Asset>({
           id,
           asset_type: "checking",
@@ -554,11 +554,11 @@ export const api = {
         }),
 
   deleteAsset: (id: string): Promise<void> =>
-    BASE_URL ? apiFetch<void>(`/assets/${id}`, { method: "DELETE" }) : delay(undefined),
+    BASE_URL ? apiFetch<void>(`/financials/assets/${id}`, { method: "DELETE" }) : delay(undefined),
 
   // ── Liabilities ────────────────────────────────────────────────────────────
   getLiabilities: (): Promise<Liability[]> =>
-    BASE_URL ? apiFetch<Liability[]>("/liabilities") : delay<Liability[]>([]),
+    BASE_URL ? apiFetch<Liability[]>("/financials/liabilities") : delay<Liability[]>([]),
 
   createLiability: (data: {
     liability_type: string;
@@ -569,7 +569,7 @@ export const api = {
     monthly_payment?: number;
   }): Promise<Liability> =>
     BASE_URL
-      ? apiFetch<Liability>("/liabilities", { method: "POST", body: JSON.stringify(data) })
+      ? apiFetch<Liability>("/financials/liabilities", { method: "POST", body: JSON.stringify(data) })
       : delay<Liability>({
           id: `l_${Date.now()}`,
           liability_type: data.liability_type,
@@ -592,7 +592,7 @@ export const api = {
     },
   ): Promise<Liability> =>
     BASE_URL
-      ? apiFetch<Liability>(`/liabilities/${id}`, { method: "PATCH", body: JSON.stringify(patch) })
+      ? apiFetch<Liability>(`/financials/liabilities/${id}`, { method: "PATCH", body: JSON.stringify(patch) })
       : delay<Liability>({
           id,
           liability_type: "other",
@@ -606,7 +606,7 @@ export const api = {
         }),
 
   deleteLiability: (id: string): Promise<void> =>
-    BASE_URL ? apiFetch<void>(`/liabilities/${id}`, { method: "DELETE" }) : delay(undefined),
+    BASE_URL ? apiFetch<void>(`/financials/liabilities/${id}`, { method: "DELETE" }) : delay(undefined),
 
   // ── Assumptions ────────────────────────────────────────────────────────────
   getAssumptions: (): Promise<FinancialAssumptions> =>
