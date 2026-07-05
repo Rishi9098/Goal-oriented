@@ -1,0 +1,43 @@
+import uuid
+from datetime import date, datetime
+
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.database import Base
+
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    gender: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    marital_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    dependents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    country: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    state_province: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    employment_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    employer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    occupation: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    onboarding_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    current_step: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

@@ -1,0 +1,47 @@
+from functools import lru_cache
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    # Application
+    app_name: str = "Northstar API"
+    app_version: str = "1.0.0"
+    debug: bool = False
+    environment: str = "production"
+
+    # Database
+    database_url: str = "postgresql+asyncpg://northstar:northstar@localhost:5432/northstar"
+    database_pool_size: int = 10
+    database_max_overflow: int = 20
+
+    # JWT
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+
+    # CORS
+    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+
+    # AI / Copilot
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o"
+
+    # Monte Carlo
+    monte_carlo_simulations: int = 10_000
+    monte_carlo_seed: int | None = None
+
+    # Rate limiting
+    rate_limit_requests: int = 100
+    rate_limit_window_seconds: int = 60
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()  # type: ignore[call-arg]

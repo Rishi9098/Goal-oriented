@@ -1,0 +1,111 @@
+# Northstar Production Risk Audit
+
+Generated 2026-07-05. Every item below was verified by reading the actual file/line — no aspirational or stylistic items. Ranked by production risk (data loss, security breach, outage, or hard scaling blocker first).
+
+---
+
+## 1. `/auth/forgot-password` returns the plaintext reset token in the API response — full account takeover — ✅ FIXED 2026-07-05
+**File:** `backend/app/routers/auth.py:145-151`
+
+The endpoint generates a password-reset token and returns it directly in the JSON response body (`reset_token=plain_token`) instead of only emailing it. There is no email-sending integration anywhere in the codebase. Anyone who knows (or guesses) a victim's email can call this endpoint, receive the reset token in the response, then call `/auth/reset-password` to set a new password and fully take over the account. The comment right above it ("Always return 200 to avoid leaking whether the email exists") shows the enumeration protection was deliberately built — this line defeats it completely by leaking something far more valuable than existence.
+**Fix:** Never include `reset_token` in the HTTP response. Send it via an email/SMS provider. If no provider is wired up yet, gate the field behind `settings.debug` so it can never leak in production.
+**Status:** Fixed — `reset_token` is now only included in the response when `settings.debug` is `True` (local dev / `.env` with `DEBUG=true`); it is `None` whenever `DEBUG=false` (current production-like default). `test_auth.py` updated: the old test asserting the token leaks was replaced with `test_forgot_password_known_email_does_not_leak_token` (asserts `reset_token is None`), and the two tests that exercise the full reset flow (`test_reset_password_with_valid_token`, `test_reset_password_token_used_twice_returns_400`) now `monkeypatch` `secrets.token_urlsafe` to a known value instead of reading the token from the response. Full backend suite: 135 passed. Note: an email/SMS delivery integration is still needed before this flow is usable in production — the fix only stops the leak, it doesn't add a way for the real user to receive the token.
+
+## 2. Rate limiter trusts `X-Forwarded-For` unconditionally — auth brute-force and cost limits are bypassable
+**File:** `backend/app/middleware/rate_limit.py:59-63`
+
+`_get_client_ip` takes the first value of the client-supplied `X-Forwarded-For` header with no check that the request actually came through a trusted proxy. Any caller can set an arbitrary/random `X-Forwarded-For` on every request to get a fresh rate-limit bucket each time, completely bypassing the limiter on `/auth/login`, `/auth/register`, and `/simulate`. This turns the login-brute-force protection and the paid-OpenAI-call throttling (see #5) into a no-op for a deliberate attacker.
+**Fix:** Only trust `X-Forwarded-For`/`X-Real-IP` when the request's direct peer is a known reverse proxy (e.g. compare `request.client.host` against an allowlist), otherwise use `request.client.host` directly.
+
+## 3. Rate-limiter bucket dict is never evicted — unbounded memory growth (DoS)
+**File:** `backend/app/middleware/rate_limit.py:54-56, 77`
+
+`self._buckets` is a `defaultdict` keyed by `ip` or `ip:path` that grows forever — there is no TTL, LRU cap, or cleanup pass. Combined with #2 (attacker can mint unlimited distinct IPs via header spoofing), this is a straightforward memory-exhaustion DoS: every spoofed IP creates a new permanent dict entry and `_TokenBucket` object that is never freed for the life of the process.
+**Fix:** Cap bucket count with an LRU eviction policy, or move to Redis with key TTLs as the module's own docstring already recommends.
+
+## 4. JWT access **and** refresh tokens stored in `localStorage`
+**File:** `code/src/lib/api.ts:60-70`
+
+Both the short-lived access token and the 7-day refresh token (`refresh_token_expire_days: int = 7` in `backend/app/config.py:21`) are stored in `localStorage`. Any XSS on the page (a compromised dependency, a third-party script, a reflected input) can read `localStorage` synchronously and exfiltrate both tokens, giving the attacker a week of persistent account access with no way for the user to detect or revoke it short of a server-side token-family invalidation (which doesn't exist — see #8).
+**Fix:** Move refresh tokens to an `httpOnly`, `Secure`, `SameSite=Strict` cookie set by the backend; keep only the short-lived access token in memory/localStorage.
+
+## 5. No rate limit or timeout on the OpenAI Copilot endpoint — unbounded billing exposure
+**File:** `backend/app/routers/copilot.py:98-109`
+
+`client.chat.completions.create` is called with no `timeout` parameter and no per-user request cap beyond the generic IP bucket (itself bypassable per #2). A single authenticated user (or an attacker who bypasses the IP limiter) can fire unlimited GPT-4o calls, each billed to the project's OpenAI account, with no circuit breaker. A hung OpenAI request also has no timeout, so it will hold the request (and the DB session/connection from `Depends(get_db)`) open indefinitely.
+**Fix:** Add a `timeout=` to the OpenAI call, add a per-user daily/hourly cap tracked in the DB or a cache, and catch `openai.APIError`/`RateLimitError` to fall back to `_fallback_response` instead of raising a raw 500.
+
+## 6. Copilot endpoint has no error handling around the OpenAI call — contradicts its own "always functional" design
+**File:** `backend/app/routers/copilot.py:98-110`
+
+The module docstring says the endpoint "Falls back to a rule-based responder when no key is configured so the endpoint is always functional," but that fallback only triggers when the key is *absent*. If the key is present but OpenAI is down, rate-limited, or returns an error, the exception propagates as an unhandled 500 — the fallback path is dead code in the one scenario (upstream outage) where it's actually needed.
+**Fix:** Wrap the `create()` call in `try/except` and fall through to `_fallback_response` on any `openai` exception.
+
+## 7. Startup runs `Base.metadata.create_all()` while Alembic migrations also exist — schema drift / broken deploys
+**File:** `backend/app/database.py:38-40`, `backend/app/main.py:23`, `backend/alembic/versions/`
+
+`create_tables()` (raw `create_all`) runs unconditionally on every app startup, in every environment, alongside a separate Alembic migration history (`001_initial_schema.py`…`003_composite_indexes.py`). `create_all` only creates missing tables — it never applies `ALTER TABLE`s from later migrations, and it will pre-create tables in a fresh environment before Alembic ever runs, which causes `alembic upgrade head` to fail with "table already exists" or silently desync `alembic_version`. Two sources of truth for schema means a model change that isn't captured in a migration will appear to work in dev (via `create_all`) and then be silently absent in any environment where only Alembic is run (or vice versa).
+**Fix:** Remove `create_tables()` from the app lifespan in non-test environments; Alembic should be the only path that touches schema in production.
+
+## 8. No git repository — zero version control on the entire project
+**Root**
+
+`git status` fails with "not a git repository." There is no commit history, no rollback point, no code review trail, no CI/CD gate, and no way to tell what changed between the current state and any prior working state. For a codebase already handling auth, JWTs, and financial data, this blocks any real review or safe-deploy process and is a single point of catastrophic loss if the working directory is ever corrupted or overwritten.
+**Fix:** `git init`, commit current state, and push to a remote before any further changes.
+
+## 9. `refresh_goal_probabilities` runs Monte Carlo simulations sequentially per goal, not in parallel
+**File:** `backend/app/services/planning_service.py:26-37`
+
+Every call to `/dashboard` or `/reports/summary` awaits `quick_probability_async` once per active goal, one at a time, inside a plain `for` loop. Each call is a full thread-pool round trip (2,000-path simulation). A user with 8 goals pays 8x the latency serially instead of concurrently. Under load this also serializes against the same shared default thread-pool executor used elsewhere in the process.
+**Fix:** Dispatch with `asyncio.gather(*[quick_probability_async(...) for g in goals])`.
+
+## 10. No upper bound on financial input fields — Monte Carlo can be driven to `inf`/`NaN`
+**Files:** `backend/app/schemas/goal.py:14`, `backend/app/schemas/financials.py:10,26,43,66`
+
+`target_amount`, `current_amount`, `monthly_contribution`, `annual_amount`, etc. are validated with `gt=0`/`ge=0` but have no upper bound (`le=`). A goal with an extreme `target_amount` (or a 30+ year horizon compounding a large `monthly_contribution`) can produce `inf`/`NaN` terminal values in `run_simulation`'s compounding loop (`backend/app/services/monte_carlo.py:90-92`), which then breaks `np.percentile` and the histogram bucketing — either a 500 or nonsensical `success_rate` returned to the user.
+**Fix:** Add sane upper bounds to the Pydantic fields, and/or clip/guard terminal values before percentile computation.
+
+## 11. `conversation_id` accepted but never persisted — Copilot has no real multi-turn memory
+**File:** `backend/app/routers/copilot.py:79, 98-109`
+
+The endpoint accepts and echoes back a `conversation_id`, implying a stateful conversation, but only the current message is ever sent to OpenAI — no prior turns are stored or replayed. Every "follow-up" question loses all previous context. This is a functional correctness gap that will surface as a support complaint ("the AI doesn't remember what I just said"), not just a nice-to-have.
+**Fix:** Persist message history keyed by `conversation_id` and include prior turns in the `messages` list (bounded to a token budget).
+
+## 12. In-memory rate limiter cannot scale horizontally
+**File:** `backend/app/middleware/rate_limit.py:1-9` (acknowledged in the module's own docstring)
+
+Each process has its own bucket dict. The moment this app runs as more than one instance/worker (any real production deployment), the effective rate limit multiplies by the instance count, and an attacker can trivially get N× the intended budget by hitting different instances. This is flagged separately from #2/#3 because it's a scaling blocker even *without* header spoofing.
+**Fix:** Move to Redis-backed counters before running more than one process.
+
+## 13. Password reset tokens have no rate limit on generation
+**File:** `backend/app/routers/auth.py:124-148`
+
+`/auth/forgot-password` is covered by the generic sensitive-route rate limit, but that limit is IP+path keyed and bypassable per #2. Nothing prevents mass-issuing reset tokens for a target email over and over (each insert is cheap), which is a minor DB-growth/spam vector on top of the much bigger issue in #1.
+**Fix:** Rate-limit by email (not just IP) in addition to fixing #1.
+
+## 14. `except Exception` swallows the real DB failure reason in the health check
+**File:** `backend/app/main.py:66-68`
+
+The health-check catches all exceptions from the DB probe and logs `error=%s` with the raw exception — acceptable for logging, but the endpoint then returns a generic `"degraded"` with no detail to callers, and there's no alerting hook (no metrics emission, no paging integration) tied to this branch. In production this means a DB outage shows up only if someone is actively polling `/health` and reading logs.
+**Fix:** Wire `db_status == "error"` to an actual alert (metrics/log-based alert or exit code for orchestrator liveness probes), not just a log line.
+
+## 15. No email verification on registration
+**File:** `backend/app/routers/auth.py:43-58`
+
+`register` creates an active user immediately from any syntactically-valid email with no verification step. Combined with no CAPTCHA/anti-abuse control (per `common/security.md` guidance, honeypots are recommended but none exist), this makes automated mass account creation trivial, which matters once billing or invite-quota logic is added on top of this user table.
+**Fix:** Add an email-verification token flow before `is_active = True`, or at minimum add a signup-specific stricter rate limit and CAPTCHA.
+
+## 16. `except Exception` in `get_db` rolls back on *any* error, including client-side validation errors already handled by FastAPI
+**File:** `backend/app/database.py:34-39`
+
+Low severity on its own, but worth flagging alongside #14 as the second of only two exception handlers in the whole backend — the codebase has almost no explicit error-handling for external-dependency failures (OpenAI, DB pool exhaustion, thread-pool saturation) beyond these two blanket catches. That absence is what makes #5/#6/#7 land harder than they would with defense in depth.
+
+## 17. `.output`, `.wrangler`, `.tanstack` build artifacts present in the working tree
+**Dir:** `code/.output/`, `code/.wrangler/`, `code/.tanstack/`
+
+These are gitignored (correctly) but currently exist on disk alongside source, dated from a prior build (`27 Jun`). Since there's no git repo (#8) there's no way to be sure these stale artifacts aren't accidentally being served or referenced by a deploy script pointed at the wrong directory. Low risk today, but worth clearing before the first real deploy so a stale build can't be shipped by mistake.
+
+---
+
+## Not included
+Stylistic nits, missing docstrings, and anything that only affects developer convenience were deliberately left off this list per the "only things that will break, leak data, or block scaling" scope. The two most urgent items to fix before this app touches real user data are **#1** (reset-token leak) and **#4** (refresh tokens in localStorage) — both are direct account-takeover paths.

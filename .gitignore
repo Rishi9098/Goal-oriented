@@ -1,0 +1,44 @@
+# ── Secrets & environment ──────────────────────────────────────────────────────
+*.env
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.coveragerc
+
+# ── Node / Frontend ────────────────────────────────────────────────────────────
+node_modules/
+.output/
+.vinxi/
+.nitro/
+dist/
+.wrangler/
+
+# ── OS ─────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Editor ─────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
