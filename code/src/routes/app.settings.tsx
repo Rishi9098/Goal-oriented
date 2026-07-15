@@ -1,11 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Bell, Check, Eye, EyeOff, KeyRound, Loader2, Link2, Trash2 } from "lucide-react";
-import { AppShell } from "@/components/app-shell";
 import { auth, clearAccessToken } from "@/lib/api";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({ meta: [{ title: "Settings — Northstar" }] }),
+  staticData: { shellTitle: "Settings" },
   component: Settings,
 });
 
@@ -13,22 +13,20 @@ type PwStatus = "idle" | "saving" | "saved" | "error";
 
 function Settings() {
   return (
-    <AppShell title="Settings">
-      <div className="max-w-2xl space-y-5">
-        <ChangePasswordSection />
-        <ComingSoonCard
-          icon={Bell}
-          title="Notifications"
-          description="Weekly digest and plan drift alerts — coming in a future release."
-        />
-        <ComingSoonCard
-          icon={Link2}
-          title="Linked accounts"
-          description="Institution connections via Plaid — coming in a future release."
-        />
-        <DeleteAccountSection />
-      </div>
-    </AppShell>
+    <div className="max-w-2xl space-y-5">
+      <ChangePasswordSection />
+      <ComingSoonCard
+        icon={Bell}
+        title="Notifications"
+        description="Weekly digest and plan drift alerts — coming in a future release."
+      />
+      <ComingSoonCard
+        icon={Link2}
+        title="Linked accounts"
+        description="Institution connections via Plaid — coming in a future release."
+      />
+      <DeleteAccountSection />
+    </div>
   );
 }
 
@@ -75,9 +73,7 @@ function ChangePasswordSection() {
             <Check className="h-3.5 w-3.5" /> Password updated
           </span>
         )}
-        {status === "error" && (
-          <span className="ml-auto text-xs text-red-400">{errorMsg}</span>
-        )}
+        {status === "error" && <span className="ml-auto text-xs text-red-400">{errorMsg}</span>}
       </div>
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
@@ -110,9 +106,7 @@ function ChangePasswordSection() {
             className={`field-input ${mismatch ? "border-red-500/60" : ""}`}
             placeholder="Repeat new password"
           />
-          {mismatch && (
-            <p className="text-xs text-red-400">Passwords do not match</p>
-          )}
+          {mismatch && <p className="text-xs text-red-400">Passwords do not match</p>}
         </div>
 
         <div className="flex justify-end pt-1">

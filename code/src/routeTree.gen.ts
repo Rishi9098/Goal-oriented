@@ -19,8 +19,18 @@ import { Route as AuthForgotPasswordRouteImport } from './routes/auth.forgot-pas
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppReportsRouteImport } from './routes/app.reports'
 import { Route as AppProfileRouteImport } from './routes/app.profile'
+import { Route as AppLifeEventsRouteImport } from './routes/app.life-events'
 import { Route as AppGoalsRouteImport } from './routes/app.goals'
+import { Route as AppFinancialsRouteImport } from './routes/app.financials'
+import { Route as AppFamilyRouteImport } from './routes/app.family'
 import { Route as AppCopilotRouteImport } from './routes/app.copilot'
+import { Route as AppFamilyIndexRouteImport } from './routes/app.family.index'
+import { Route as AppFamilySchemesRouteImport } from './routes/app.family.schemes'
+import { Route as AppFamilyRecommendationsRouteImport } from './routes/app.family.recommendations'
+import { Route as AppFamilyInsuranceRouteImport } from './routes/app.family.insurance'
+import { Route as AppFamilyGoalsRouteImport } from './routes/app.family.goals'
+import { Route as AppFamilyAddRouteImport } from './routes/app.family.add'
+import { Route as AppFamilyMembersIdRouteImport } from './routes/app.family.members.$id'
 
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
@@ -72,9 +82,24 @@ const AppProfileRoute = AppProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => AppRoute,
 } as any)
+const AppLifeEventsRoute = AppLifeEventsRouteImport.update({
+  id: '/life-events',
+  path: '/life-events',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppGoalsRoute = AppGoalsRouteImport.update({
   id: '/goals',
   path: '/goals',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFinancialsRoute = AppFinancialsRouteImport.update({
+  id: '/financials',
+  path: '/financials',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFamilyRoute = AppFamilyRouteImport.update({
+  id: '/family',
+  path: '/family',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCopilotRoute = AppCopilotRouteImport.update({
@@ -82,13 +107,52 @@ const AppCopilotRoute = AppCopilotRouteImport.update({
   path: '/copilot',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFamilyIndexRoute = AppFamilyIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppFamilyRoute,
+} as any)
+const AppFamilySchemesRoute = AppFamilySchemesRouteImport.update({
+  id: '/schemes',
+  path: '/schemes',
+  getParentRoute: () => AppFamilyRoute,
+} as any)
+const AppFamilyRecommendationsRoute =
+  AppFamilyRecommendationsRouteImport.update({
+    id: '/recommendations',
+    path: '/recommendations',
+    getParentRoute: () => AppFamilyRoute,
+  } as any)
+const AppFamilyInsuranceRoute = AppFamilyInsuranceRouteImport.update({
+  id: '/insurance',
+  path: '/insurance',
+  getParentRoute: () => AppFamilyRoute,
+} as any)
+const AppFamilyGoalsRoute = AppFamilyGoalsRouteImport.update({
+  id: '/goals',
+  path: '/goals',
+  getParentRoute: () => AppFamilyRoute,
+} as any)
+const AppFamilyAddRoute = AppFamilyAddRouteImport.update({
+  id: '/add',
+  path: '/add',
+  getParentRoute: () => AppFamilyRoute,
+} as any)
+const AppFamilyMembersIdRoute = AppFamilyMembersIdRouteImport.update({
+  id: '/members/$id',
+  path: '/members/$id',
+  getParentRoute: () => AppFamilyRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/onboarding': typeof OnboardingRoute
   '/app/copilot': typeof AppCopilotRoute
+  '/app/family': typeof AppFamilyRouteWithChildren
+  '/app/financials': typeof AppFinancialsRoute
   '/app/goals': typeof AppGoalsRoute
+  '/app/life-events': typeof AppLifeEventsRoute
   '/app/profile': typeof AppProfileRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
@@ -96,12 +160,21 @@ export interface FileRoutesByFullPath {
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
   '/app/': typeof AppIndexRoute
+  '/app/family/add': typeof AppFamilyAddRoute
+  '/app/family/goals': typeof AppFamilyGoalsRoute
+  '/app/family/insurance': typeof AppFamilyInsuranceRoute
+  '/app/family/recommendations': typeof AppFamilyRecommendationsRoute
+  '/app/family/schemes': typeof AppFamilySchemesRoute
+  '/app/family/': typeof AppFamilyIndexRoute
+  '/app/family/members/$id': typeof AppFamilyMembersIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/onboarding': typeof OnboardingRoute
   '/app/copilot': typeof AppCopilotRoute
+  '/app/financials': typeof AppFinancialsRoute
   '/app/goals': typeof AppGoalsRoute
+  '/app/life-events': typeof AppLifeEventsRoute
   '/app/profile': typeof AppProfileRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
@@ -109,6 +182,13 @@ export interface FileRoutesByTo {
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
   '/app': typeof AppIndexRoute
+  '/app/family/add': typeof AppFamilyAddRoute
+  '/app/family/goals': typeof AppFamilyGoalsRoute
+  '/app/family/insurance': typeof AppFamilyInsuranceRoute
+  '/app/family/recommendations': typeof AppFamilyRecommendationsRoute
+  '/app/family/schemes': typeof AppFamilySchemesRoute
+  '/app/family': typeof AppFamilyIndexRoute
+  '/app/family/members/$id': typeof AppFamilyMembersIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -116,7 +196,10 @@ export interface FileRoutesById {
   '/app': typeof AppRouteWithChildren
   '/onboarding': typeof OnboardingRoute
   '/app/copilot': typeof AppCopilotRoute
+  '/app/family': typeof AppFamilyRouteWithChildren
+  '/app/financials': typeof AppFinancialsRoute
   '/app/goals': typeof AppGoalsRoute
+  '/app/life-events': typeof AppLifeEventsRoute
   '/app/profile': typeof AppProfileRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
@@ -124,6 +207,13 @@ export interface FileRoutesById {
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
   '/app/': typeof AppIndexRoute
+  '/app/family/add': typeof AppFamilyAddRoute
+  '/app/family/goals': typeof AppFamilyGoalsRoute
+  '/app/family/insurance': typeof AppFamilyInsuranceRoute
+  '/app/family/recommendations': typeof AppFamilyRecommendationsRoute
+  '/app/family/schemes': typeof AppFamilySchemesRoute
+  '/app/family/': typeof AppFamilyIndexRoute
+  '/app/family/members/$id': typeof AppFamilyMembersIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -132,7 +222,10 @@ export interface FileRouteTypes {
     | '/app'
     | '/onboarding'
     | '/app/copilot'
+    | '/app/family'
+    | '/app/financials'
     | '/app/goals'
+    | '/app/life-events'
     | '/app/profile'
     | '/app/reports'
     | '/app/settings'
@@ -140,12 +233,21 @@ export interface FileRouteTypes {
     | '/auth/reset-password'
     | '/auth/sign-in'
     | '/app/'
+    | '/app/family/add'
+    | '/app/family/goals'
+    | '/app/family/insurance'
+    | '/app/family/recommendations'
+    | '/app/family/schemes'
+    | '/app/family/'
+    | '/app/family/members/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/onboarding'
     | '/app/copilot'
+    | '/app/financials'
     | '/app/goals'
+    | '/app/life-events'
     | '/app/profile'
     | '/app/reports'
     | '/app/settings'
@@ -153,13 +255,23 @@ export interface FileRouteTypes {
     | '/auth/reset-password'
     | '/auth/sign-in'
     | '/app'
+    | '/app/family/add'
+    | '/app/family/goals'
+    | '/app/family/insurance'
+    | '/app/family/recommendations'
+    | '/app/family/schemes'
+    | '/app/family'
+    | '/app/family/members/$id'
   id:
     | '__root__'
     | '/'
     | '/app'
     | '/onboarding'
     | '/app/copilot'
+    | '/app/family'
+    | '/app/financials'
     | '/app/goals'
+    | '/app/life-events'
     | '/app/profile'
     | '/app/reports'
     | '/app/settings'
@@ -167,6 +279,13 @@ export interface FileRouteTypes {
     | '/auth/reset-password'
     | '/auth/sign-in'
     | '/app/'
+    | '/app/family/add'
+    | '/app/family/goals'
+    | '/app/family/insurance'
+    | '/app/family/recommendations'
+    | '/app/family/schemes'
+    | '/app/family/'
+    | '/app/family/members/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -250,11 +369,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProfileRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/life-events': {
+      id: '/app/life-events'
+      path: '/life-events'
+      fullPath: '/app/life-events'
+      preLoaderRoute: typeof AppLifeEventsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/goals': {
       id: '/app/goals'
       path: '/goals'
       fullPath: '/app/goals'
       preLoaderRoute: typeof AppGoalsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/financials': {
+      id: '/app/financials'
+      path: '/financials'
+      fullPath: '/app/financials'
+      preLoaderRoute: typeof AppFinancialsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/family': {
+      id: '/app/family'
+      path: '/family'
+      fullPath: '/app/family'
+      preLoaderRoute: typeof AppFamilyRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/copilot': {
@@ -264,12 +404,88 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCopilotRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/family/': {
+      id: '/app/family/'
+      path: '/'
+      fullPath: '/app/family/'
+      preLoaderRoute: typeof AppFamilyIndexRouteImport
+      parentRoute: typeof AppFamilyRoute
+    }
+    '/app/family/schemes': {
+      id: '/app/family/schemes'
+      path: '/schemes'
+      fullPath: '/app/family/schemes'
+      preLoaderRoute: typeof AppFamilySchemesRouteImport
+      parentRoute: typeof AppFamilyRoute
+    }
+    '/app/family/recommendations': {
+      id: '/app/family/recommendations'
+      path: '/recommendations'
+      fullPath: '/app/family/recommendations'
+      preLoaderRoute: typeof AppFamilyRecommendationsRouteImport
+      parentRoute: typeof AppFamilyRoute
+    }
+    '/app/family/insurance': {
+      id: '/app/family/insurance'
+      path: '/insurance'
+      fullPath: '/app/family/insurance'
+      preLoaderRoute: typeof AppFamilyInsuranceRouteImport
+      parentRoute: typeof AppFamilyRoute
+    }
+    '/app/family/goals': {
+      id: '/app/family/goals'
+      path: '/goals'
+      fullPath: '/app/family/goals'
+      preLoaderRoute: typeof AppFamilyGoalsRouteImport
+      parentRoute: typeof AppFamilyRoute
+    }
+    '/app/family/add': {
+      id: '/app/family/add'
+      path: '/add'
+      fullPath: '/app/family/add'
+      preLoaderRoute: typeof AppFamilyAddRouteImport
+      parentRoute: typeof AppFamilyRoute
+    }
+    '/app/family/members/$id': {
+      id: '/app/family/members/$id'
+      path: '/members/$id'
+      fullPath: '/app/family/members/$id'
+      preLoaderRoute: typeof AppFamilyMembersIdRouteImport
+      parentRoute: typeof AppFamilyRoute
+    }
   }
 }
 
+interface AppFamilyRouteChildren {
+  AppFamilyAddRoute: typeof AppFamilyAddRoute
+  AppFamilyGoalsRoute: typeof AppFamilyGoalsRoute
+  AppFamilyInsuranceRoute: typeof AppFamilyInsuranceRoute
+  AppFamilyRecommendationsRoute: typeof AppFamilyRecommendationsRoute
+  AppFamilySchemesRoute: typeof AppFamilySchemesRoute
+  AppFamilyIndexRoute: typeof AppFamilyIndexRoute
+  AppFamilyMembersIdRoute: typeof AppFamilyMembersIdRoute
+}
+
+const AppFamilyRouteChildren: AppFamilyRouteChildren = {
+  AppFamilyAddRoute: AppFamilyAddRoute,
+  AppFamilyGoalsRoute: AppFamilyGoalsRoute,
+  AppFamilyInsuranceRoute: AppFamilyInsuranceRoute,
+  AppFamilyRecommendationsRoute: AppFamilyRecommendationsRoute,
+  AppFamilySchemesRoute: AppFamilySchemesRoute,
+  AppFamilyIndexRoute: AppFamilyIndexRoute,
+  AppFamilyMembersIdRoute: AppFamilyMembersIdRoute,
+}
+
+const AppFamilyRouteWithChildren = AppFamilyRoute._addFileChildren(
+  AppFamilyRouteChildren,
+)
+
 interface AppRouteChildren {
   AppCopilotRoute: typeof AppCopilotRoute
+  AppFamilyRoute: typeof AppFamilyRouteWithChildren
+  AppFinancialsRoute: typeof AppFinancialsRoute
   AppGoalsRoute: typeof AppGoalsRoute
+  AppLifeEventsRoute: typeof AppLifeEventsRoute
   AppProfileRoute: typeof AppProfileRoute
   AppReportsRoute: typeof AppReportsRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -278,7 +494,10 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppCopilotRoute: AppCopilotRoute,
+  AppFamilyRoute: AppFamilyRouteWithChildren,
+  AppFinancialsRoute: AppFinancialsRoute,
   AppGoalsRoute: AppGoalsRoute,
+  AppLifeEventsRoute: AppLifeEventsRoute,
   AppProfileRoute: AppProfileRoute,
   AppReportsRoute: AppReportsRoute,
   AppSettingsRoute: AppSettingsRoute,

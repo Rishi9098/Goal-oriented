@@ -25,6 +25,14 @@ class FinancialAssumptions(Base):
     expected_return_conservative: Mapped[float] = mapped_column(Float, default=0.05, nullable=False)
     expected_return_balanced: Mapped[float] = mapped_column(Float, default=0.07, nullable=False)
     expected_return_aggressive: Mapped[float] = mapped_column(Float, default=0.09, nullable=False)
+    # DEPRECATED (2026-07-06, FutureCompatibilityAuditReport.md Finding C /
+    # FoundationReconciliationReport.md): a flat, single-rate approximation
+    # that predates the versioned `tax_regimes`/`tax_slabs` engine
+    # (Milestone 1). Confirmed unread by any service/router as of this
+    # reconciliation — grep shows it is only ever set to its default, never
+    # computed against. `tax_slabs` (via `tax_regimes`) is the authoritative
+    # source for any new tax calculation; do NOT wire new logic to this
+    # field. See the migration plan in FoundationReconciliationReport.md.
     tax_rate: Mapped[float] = mapped_column(Float, default=0.22, nullable=False)
     retirement_age: Mapped[int] = mapped_column(Integer, default=65, nullable=False)
     social_security_monthly: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)

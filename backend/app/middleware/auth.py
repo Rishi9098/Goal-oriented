@@ -27,8 +27,8 @@ async def get_current_user(
     )
     try:
         user_id = get_user_id_from_token(credentials.credentials, expected_type="access")
-    except ValueError:
-        raise credentials_exc
+    except ValueError as exc:
+        raise credentials_exc from exc
 
     result = await db.execute(
         select(User).where(User.id == uuid.UUID(user_id), User.is_active.is_(True))

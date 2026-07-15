@@ -12,6 +12,7 @@ import {
   StepAssumptions,
   InputField,
   type ProfileFormState,
+  type FamilyStepFormState,
   type GoalFormState,
   type AssumptionsFormState,
 } from "@/components/onboarding/wizard-steps";
@@ -52,13 +53,18 @@ const TOTAL_WIZARD_STEPS = 10; // steps 1-10 (excludes 0=account and 11=done)
 const DEFAULT_PROFILE: ProfileFormState = {
   date_of_birth: "",
   gender: "",
-  marital_status: "single",
-  dependents: "0",
   country: "",
   state_province: "",
   employment_status: "employed",
   employer: "",
   occupation: "",
+};
+
+const DEFAULT_FAMILY_STEP: FamilyStepFormState = {
+  has_spouse: "no",
+  has_children: "no",
+  children_count: "",
+  has_dependent_parents: "no",
 };
 
 const DEFAULT_GOAL: GoalFormState = {
@@ -90,8 +96,11 @@ function Onboarding() {
   const [showPw, setShowPw] = useState(false);
   const [registering, setRegistering] = useState(false);
 
-  // Steps 1-3 — profile
+  // Steps 1, 3 — profile
   const [profile, setProfile] = useState<ProfileFormState>(DEFAULT_PROFILE);
+
+  // Step 2 — family (Milestone 2 Task 4)
+  const [familyStep, setFamilyStep] = useState<FamilyStepFormState>(DEFAULT_FAMILY_STEP);
 
   // Steps 4-8 — financial lists
   const [incomeItems, setIncomeItems] = useState<IncomeSource[]>([]);
@@ -135,8 +144,14 @@ function Onboarding() {
   const handleAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (account.password !== account.confirm) { setError("Passwords do not match."); return; }
-    if (account.password.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (account.password !== account.confirm) {
+      setError("Passwords do not match.");
+      return;
+    }
+    if (account.password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
     setRegistering(true);
     try {
       await auth.register(account.email, account.password, account.fullName);
@@ -160,12 +175,32 @@ function Onboarding() {
     });
   };
 
-  const handleFamily = (e: React.FormEvent) => {
+  const handleFamily = async (e: React.FormEvent) => {
     e.preventDefault();
-    void saveAndAdvance({
-      marital_status: profile.marital_status || undefined,
-      dependents: parseInt(profile.dependents) || 0,
-    });
+    setError(null);
+
+    const hasChildren = familyStep.has_children === "yes";
+    const childrenCount = hasChildren ? Number(familyStep.children_count) : undefined;
+    if (hasChildren && (!childrenCount || childrenCount < 1 || childrenCount > 10)) {
+      setError("Please enter how many children (1-10).");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.seedFamilyOnboarding({
+        has_spouse: familyStep.has_spouse === "yes",
+        has_children: hasChildren,
+        children_count: childrenCount,
+        has_dependent_parents: familyStep.has_dependent_parents === "yes",
+      });
+      await api.upsertProfile({ current_step: step + 1 }).catch(() => {});
+      advance();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save your family details.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleEmployment = (e: React.FormEvent) => {
@@ -179,7 +214,10 @@ function Onboarding() {
 
   const handleGoal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!goal.name.trim()) { setError("Please give your goal a name."); return; }
+    if (!goal.name.trim()) {
+      setError("Please give your goal a name.");
+      return;
+    }
     setError(null);
     setSaving(true);
     try {
@@ -224,7 +262,11 @@ function Onboarding() {
 
   // ── List step helpers ───────────────────────────────────────────────────────
 
-  const addIncome = async (data: { source_type: string; description?: string; annual_amount: number }) => {
+  const addIncome = async (data: {
+    source_type: string;
+    description?: string;
+    annual_amount: number;
+  }) => {
     const item = await api.createIncome(data);
     setIncomeItems((prev) => [...prev, item]);
   };
@@ -234,7 +276,11 @@ function Onboarding() {
     setIncomeItems((prev) => prev.filter((i) => i.id !== id));
   };
 
-  const addExpense = async (data: { category: string; description?: string; monthly_amount: number }) => {
+  const addExpense = async (data: {
+    category: string;
+    description?: string;
+    monthly_amount: number;
+  }) => {
     const item = await api.createExpense(data);
     setExpenseItems((prev) => [...prev, item]);
   };
@@ -244,7 +290,12 @@ function Onboarding() {
     setExpenseItems((prev) => prev.filter((i) => i.id !== id));
   };
 
-  const addLiquid = async (data: { asset_type: string; institution?: string; description?: string; current_value: number }) => {
+  const addLiquid = async (data: {
+    asset_type: string;
+    institution?: string;
+    description?: string;
+    current_value: number;
+  }) => {
     const item = await api.createAsset(data);
     setLiquidAssets((prev) => [...prev, item]);
   };
@@ -254,7 +305,12 @@ function Onboarding() {
     setLiquidAssets((prev) => prev.filter((i) => i.id !== id));
   };
 
-  const addInvestment = async (data: { asset_type: string; institution?: string; description?: string; current_value: number }) => {
+  const addInvestment = async (data: {
+    asset_type: string;
+    institution?: string;
+    description?: string;
+    current_value: number;
+  }) => {
     const item = await api.createAsset(data);
     setInvestments((prev) => [...prev, item]);
   };
@@ -264,7 +320,14 @@ function Onboarding() {
     setInvestments((prev) => prev.filter((i) => i.id !== id));
   };
 
-  const addLiability = async (data: { liability_type: string; institution?: string; description?: string; balance: number; interest_rate?: number; monthly_payment?: number }) => {
+  const addLiability = async (data: {
+    liability_type: string;
+    institution?: string;
+    description?: string;
+    balance: number;
+    interest_rate?: number;
+    monthly_payment?: number;
+  }) => {
     const item = await api.createLiability(data);
     setLiabilities((prev) => [...prev, item]);
   };
@@ -337,11 +400,10 @@ function Onboarding() {
 
           {step === 2 && (
             <StepFamily
-              form={profile}
-              onChange={(patch) => setProfile((prev) => ({ ...prev, ...patch }))}
-              onSubmit={handleFamily}
+              form={familyStep}
+              onChange={(patch) => setFamilyStep((prev) => ({ ...prev, ...patch }))}
+              onSubmit={(e) => void handleFamily(e)}
               onBack={back}
-              onSkip={() => void saveAndAdvance()}
               loading={saving}
             />
           )}
@@ -430,7 +492,9 @@ function Onboarding() {
               onSubmit={handleAssumptions}
               onBack={back}
               onSkip={() => {
-                void api.upsertProfile({ onboarding_complete: true, current_step: 11 }).catch(() => {});
+                void api
+                  .upsertProfile({ onboarding_complete: true, current_step: 11 })
+                  .catch(() => {});
                 advance();
               }}
               loading={saving}
@@ -438,10 +502,7 @@ function Onboarding() {
           )}
 
           {step === 11 && (
-            <DoneStep
-              name={account.fullName}
-              onContinue={() => navigate({ to: "/app" })}
-            />
+            <DoneStep name={account.fullName} onContinue={() => navigate({ to: "/app" })} />
           )}
         </div>
       </div>
@@ -460,7 +521,9 @@ function AccountStep({
   onTogglePw,
 }: {
   form: { fullName: string; email: string; password: string; confirm: string };
-  onChange: (patch: Partial<{ fullName: string; email: string; password: string; confirm: string }>) => void;
+  onChange: (
+    patch: Partial<{ fullName: string; email: string; password: string; confirm: string }>,
+  ) => void;
   onSubmit: (e: React.FormEvent) => void;
   loading: boolean;
   showPw: boolean;
@@ -559,13 +622,7 @@ function AccountStep({
 
 // ── Step 11: Done ─────────────────────────────────────────────────────────────
 
-function DoneStep({
-  name,
-  onContinue,
-}: {
-  name: string;
-  onContinue: () => void;
-}) {
+function DoneStep({ name, onContinue }: { name: string; onContinue: () => void }) {
   return (
     <div className="text-center py-4">
       <div className="mx-auto h-14 w-14 rounded-full bg-gradient-to-br from-primary to-cyan grid place-items-center shadow-glow mb-5">
@@ -575,8 +632,13 @@ function DoneStep({
         You're all set{name ? `, ${name.split(" ")[0]}` : ""}!
       </h1>
       <p className="mt-2 text-sm text-muted-foreground max-w-xs mx-auto">
-        Your financial profile is ready. The dashboard will now reflect your
-        real numbers and run personalized projections.
+        Your financial profile is ready. The dashboard will now reflect your real numbers and run
+        personalized projections.
+      </p>
+      <p className="mt-3 text-xs text-muted-foreground max-w-xs mx-auto">
+        You'll see a "Plan health" score there — it reflects how likely you are to reach the goals
+        you add, not a grade on your finances overall. It starts low until your goals have real
+        numbers behind them, so don't be alarmed if it isn't high on day one.
       </p>
       <button
         onClick={onContinue}

@@ -39,7 +39,9 @@ class SimulationResponse(BaseModel):
 class OptimizationRequest(BaseModel):
     goal_id: uuid.UUID
     target_probability: float = Field(ge=50, le=99, default=80)
-    max_monthly_increase: float = Field(default=1_000.0, ge=0, description="Max extra monthly contribution")
+    max_monthly_increase: float = Field(
+        default=1_000.0, ge=0, description="Max extra monthly contribution"
+    )
     allow_risk_adjustment: bool = True
 
 

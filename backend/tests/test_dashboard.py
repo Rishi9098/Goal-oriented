@@ -131,3 +131,30 @@ class TestDashboard:
     async def test_dashboard_requires_auth(self, client: AsyncClient) -> None:
         resp = await client.get("/api/v1/dashboard")
         assert resp.status_code == 403
+
+    async def test_repeated_dashboard_reads_never_change_goal_probability(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
+        """PCA-3 / ADR-001: a read must never mutate stored financial results."""
+        goal_payload = {
+            "name": "Retirement",
+            "category": "retirement",
+            "target_amount": 500_000,
+            "current_amount": 10_000,
+            "target_date": (date.today() + timedelta(days=365 * 20)).isoformat(),
+            "monthly_contribution": 500,
+            "risk_profile": "balanced",
+            "priority": 1,
+        }
+        create_resp = await client.post("/api/v1/goals", json=goal_payload, headers=auth_headers)
+        created_probability = create_resp.json()["probability"]
+
+        first = await client.get("/api/v1/dashboard", headers=auth_headers)
+        second = await client.get("/api/v1/dashboard", headers=auth_headers)
+        third = await client.get("/api/v1/reports/summary", headers=auth_headers)
+
+        assert first.json()["plan_health_score"] == second.json()["plan_health_score"]
+        assert first.json()["plan_health_score"] == third.json()["plan_health_score"]
+
+        goals_resp = await client.get("/api/v1/goals", headers=auth_headers)
+        assert goals_resp.json()[0]["probability"] == created_probability

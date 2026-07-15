@@ -1,6 +1,5 @@
 from collections.abc import AsyncGenerator
 
-import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -69,4 +68,26 @@ async def user(db: AsyncSession) -> User:
 @pytest_asyncio.fixture
 def auth_headers(user: User) -> dict[str, str]:
     token = create_access_token(str(user.id))
+    return {"Authorization": f"Bearer {token}"}
+
+
+# Moved here from test_family_router.py (Milestone 2 Task 8) so a second
+# test file (test_family_goal_tagging.py) can reuse the same "a second,
+# unrelated user" fixtures instead of a second copy.
+@pytest_asyncio.fixture
+async def other_user(db: AsyncSession) -> User:
+    u = User(
+        email="other@example.com",
+        hashed_password=hash_password("OtherPass123!"),
+        full_name="Other User",
+        is_active=True,
+    )
+    db.add(u)
+    await db.flush()
+    return u
+
+
+@pytest_asyncio.fixture
+def other_auth_headers(other_user: User) -> dict[str, str]:
+    token = create_access_token(str(other_user.id))
     return {"Authorization": f"Bearer {token}"}

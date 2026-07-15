@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { z } from "zod";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Plus,
@@ -13,13 +14,24 @@ import {
   BarChart2,
   Loader2,
 } from "lucide-react";
-import { AppShell } from "@/components/app-shell";
+import { useDialogA11y } from "@/hooks/use-dialog-a11y";
 import { formatCurrency, type Goal } from "@/lib/mock-data";
 import { api } from "@/lib/api";
 import { GoalSimPanel } from "@/components/dashboard/GoalSimPanel";
 
+const searchSchema = z.object({
+  // Lets the Global Command Palette's "Create Goal" quick action open this
+  // page's existing "New goal" modal directly, via /app/goals?new=true —
+  // see ArchitectureReview_Phase2.md §7. The modal and form themselves are
+  // unchanged; this only adds one more way to trigger the same, already-
+  // working "+ New goal" button click.
+  new: z.boolean().default(false),
+});
+
 export const Route = createFileRoute("/app/goals")({
   head: () => ({ meta: [{ title: "Goals — Northstar" }] }),
+  staticData: { shellTitle: "Goals" },
+  validateSearch: searchSchema,
   component: GoalsPage,
 });
 
@@ -66,10 +78,24 @@ const EMPTY_FORM: NewGoalForm = {
 };
 
 function GoalsPage() {
+  const { new: openNewGoal } = Route.useSearch();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(openNewGoal);
+
+  // Re-checks on every navigation to this route, not just the first mount —
+  // TanStack Router doesn't remount this component for a search-param-only
+  // navigation (e.g. the palette's "Create Goal" action while already on
+  // this page), so useState's initial value alone would miss that case.
+  useEffect(() => {
+    if (openNewGoal) setOpen(true);
+  }, [openNewGoal]);
+  // AccessibilityAudit.md Phase 8 — this modal is inline JSX behind
+  // `{open && (...)}` in an always-mounted route component rather than its
+  // own component, so `isOpen` is passed explicitly instead of relying on
+  // mount/unmount.
+  const newGoalDialogRef = useDialogA11y(() => setOpen(false), open);
   const [filter, setFilter] = useState<"all" | "ontrack" | "atrisk">("all");
   const [form, setForm] = useState<NewGoalForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -77,15 +103,15 @@ function GoalsPage() {
   const [selected, setSelected] = useState<Goal | null>(null);
 
   useEffect(() => {
-    api.getGoals()
+    api
+      .getGoals()
       .then(setGoals)
       .finally(() => setLoading(false));
   }, []);
 
   const filtered = goals.filter((g) => {
     const matches = g.name.toLowerCase().includes(query.toLowerCase());
-    const okFilter =
-      filter === "all" || (filter === "ontrack" ? g.onTrack : !g.onTrack);
+    const okFilter = filter === "all" || (filter === "ontrack" ? g.onTrack : !g.onTrack);
     return matches && okFilter;
   });
 
@@ -126,7 +152,7 @@ function GoalsPage() {
   };
 
   return (
-    <AppShell title="Goals">
+    <>
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center gap-3">
           <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 w-full md:w-80">
@@ -189,9 +215,10 @@ function GoalsPage() {
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((g) => {
               const Icon = categoryIcon[g.category];
-              const pct = g.targetAmount > 0
-                ? Math.min(100, Math.round((g.currentAmount / g.targetAmount) * 100))
-                : 0;
+              const pct =
+                g.targetAmount > 0
+                  ? Math.min(100, Math.round((g.currentAmount / g.targetAmount) * 100))
+                  : 0;
               const years = Math.max(
                 0,
                 new Date(g.targetDate).getFullYear() - new Date().getFullYear(),
@@ -219,7 +246,10 @@ function GoalsPage() {
                       </div>
                     </div>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setSelected(g); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelected(g);
+                      }}
                       className="p-1 rounded hover:bg-accent text-muted-foreground"
                       title="Simulate"
                     >
@@ -230,7 +260,9 @@ function GoalsPage() {
                   <div className="mt-5">
                     <div className="flex items-baseline justify-between">
                       <p className="font-display text-2xl">{formatCurrency(g.currentAmount)}</p>
-                      <p className="text-xs text-muted-foreground">of {formatCurrency(g.targetAmount)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        of {formatCurrency(g.targetAmount)}
+                      </p>
                     </div>
                     <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
                       <motion.div
@@ -284,13 +316,20 @@ function GoalsPage() {
             onClick={() => setOpen(false)}
           >
             <motion.div
+              ref={newGoalDialogRef}
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 20, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-lg surface-card p-6 max-h-[90vh] overflow-y-auto"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="new-goal-dialog-heading"
+              tabIndex={-1}
+              className="w-full max-w-lg surface-card p-6 max-h-[90vh] overflow-y-auto outline-none"
             >
-              <h2 className="font-display text-xl tracking-tight">New goal</h2>
+              <h2 id="new-goal-dialog-heading" className="font-display text-xl tracking-tight">
+                New goal
+              </h2>
               <p className="text-sm text-muted-foreground mt-1">
                 Define what you're saving for. We'll run the Monte Carlo automatically.
               </p>
@@ -317,11 +356,15 @@ function GoalsPage() {
                   <span className="text-xs text-muted-foreground">Category</span>
                   <select
                     value={form.category}
-                    onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as Goal["category"] }))}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, category: e.target.value as Goal["category"] }))
+                    }
                     className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-primary"
                   >
                     {CATEGORIES.map((c) => (
-                      <option key={c.value} value={c.value}>{c.label}</option>
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -344,7 +387,9 @@ function GoalsPage() {
                     <input
                       type="number"
                       value={form.monthlyContribution}
-                      onChange={(e) => setForm((f) => ({ ...f, monthlyContribution: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, monthlyContribution: e.target.value }))
+                      }
                       placeholder="500"
                       required
                       min="0"
@@ -391,7 +436,11 @@ function GoalsPage() {
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => { setOpen(false); setFormError(null); setForm(EMPTY_FORM); }}
+                    onClick={() => {
+                      setOpen(false);
+                      setFormError(null);
+                      setForm(EMPTY_FORM);
+                    }}
                     className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-accent"
                   >
                     Cancel
@@ -402,7 +451,9 @@ function GoalsPage() {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-cyan text-sm font-medium text-primary-foreground shadow-glow disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {saving ? (
-                      <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</>
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> Saving…
+                      </>
                     ) : (
                       "Create goal"
                     )}
@@ -413,6 +464,6 @@ function GoalsPage() {
           </motion.div>
         )}
       </AnimatePresence>
-    </AppShell>
+    </>
   );
 }

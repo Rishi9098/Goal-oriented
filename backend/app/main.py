@@ -15,12 +15,33 @@ from app.routers import (
     auth,
     copilot,
     dashboard,
+    family,
     financials,
     goals,
+    life_events,
+    notifications,
     profile,
     reports,
     simulate,
 )
+from app.services import life_event_service
+from app.services.birth_of_child_handler import BirthOfChildHandler
+from app.services.bonus_handler import BonusHandler
+from app.services.business_sale_handler import BusinessSaleHandler
+from app.services.business_start_handler import BusinessStartHandler
+from app.services.dependent_parent_handler import DependentParentHandler
+from app.services.divorce_handler import DivorceHandler
+from app.services.education_planning_handler import EducationPlanningHandler
+from app.services.home_sale_handler import HomeSaleHandler
+from app.services.house_purchase_handler import HousePurchaseHandler
+from app.services.inheritance_handler import InheritanceHandler
+from app.services.job_change_handler import JobChangeHandler
+from app.services.loan_payoff_handler import LoanPayoffHandler
+from app.services.major_medical_event_handler import MajorMedicalEventHandler
+from app.services.marriage_handler import MarriageHandler
+from app.services.new_loan_handler import NewLoanHandler
+from app.services.retirement_handler import RetirementHandler
+from app.services.salary_raise_handler import SalaryRaiseHandler
 
 configure_logging()
 settings = get_settings()
@@ -40,7 +61,36 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("shutdown")
 
 
+def _register_life_event_handlers() -> None:
+    """Wires the Life Event Engine's concrete handlers into the generic
+    registry built in Phase A. Idempotent to call more than once
+    (register_handler is a plain dict assignment)."""
+    life_event_service.register_handler("loan_payoff", LoanPayoffHandler())
+    life_event_service.register_handler("salary_raise", SalaryRaiseHandler())
+    life_event_service.register_handler("job_change", JobChangeHandler())
+    life_event_service.register_handler("bonus", BonusHandler())
+    life_event_service.register_handler("new_loan", NewLoanHandler())
+    life_event_service.register_handler("house_purchase", HousePurchaseHandler())
+    life_event_service.register_handler("home_sale", HomeSaleHandler())
+    life_event_service.register_handler("marriage", MarriageHandler())
+    life_event_service.register_handler("birth_of_child", BirthOfChildHandler())
+    # Adoption is "identical to Birth of Child in every respect" per
+    # LifeEventEngineArchitecture.md §5.6 — same handler class, registered
+    # under a second event_type key, not a duplicate handler file.
+    life_event_service.register_handler("adoption", BirthOfChildHandler())
+    life_event_service.register_handler("divorce", DivorceHandler())
+    life_event_service.register_handler("dependent_parent", DependentParentHandler())
+    life_event_service.register_handler("retirement", RetirementHandler())
+    life_event_service.register_handler("education_planning", EducationPlanningHandler())
+    life_event_service.register_handler("inheritance", InheritanceHandler())
+    life_event_service.register_handler("major_medical_event", MajorMedicalEventHandler())
+    life_event_service.register_handler("business_start", BusinessStartHandler())
+    life_event_service.register_handler("business_sale", BusinessSaleHandler())
+
+
 def create_app() -> FastAPI:
+    _register_life_event_handlers()
+
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
@@ -70,6 +120,9 @@ def create_app() -> FastAPI:
     app.include_router(financials.router, prefix=prefix)
     app.include_router(assumptions.router, prefix=prefix)
     app.include_router(reports.router, prefix=prefix)
+    app.include_router(family.router, prefix=prefix)
+    app.include_router(notifications.router, prefix=prefix)
+    app.include_router(life_events.router, prefix=prefix)
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:

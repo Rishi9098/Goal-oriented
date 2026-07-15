@@ -13,7 +13,7 @@ import time
 from collections import OrderedDict
 from threading import Lock
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -95,13 +95,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         while len(self._buckets) > self._max_buckets:
             self._buckets.popitem(last=False)
 
-    async def dispatch(self, request: Request, call_next: object) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         path = request.url.path
         is_sensitive = any(path.startswith(p) for p in _SENSITIVE_PREFIXES)
 
         # Health check and docs bypass rate limiting
         if path in ("/health", "/docs", "/redoc", "/openapi.json"):
-            return await call_next(request)  # type: ignore[misc]
+            return await call_next(request)
 
         ip = self._get_client_ip(request)
         key = f"{ip}:{path}" if is_sensitive else ip
@@ -124,4 +124,4 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 headers={"Retry-After": str(settings.rate_limit_window_seconds)},
             )
 
-        return await call_next(request)  # type: ignore[misc]
+        return await call_next(request)

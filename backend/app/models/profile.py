@@ -23,7 +23,20 @@ class UserProfile(Base):
     )
     date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     gender: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # DEPRECATED (2026-07-06, FutureCompatibilityAuditReport.md Finding A /
+    # FoundationReconciliationReport.md): `household_members.relationship_type`
+    # (a 'spouse' row's presence) is the authoritative source of marital
+    # status going forward. This flat field is a convenience summary kept
+    # only for onboarding-flow backward compatibility — do NOT write new
+    # business logic (tax, eligibility, recommendation) against it. See the
+    # migration plan in FoundationReconciliationReport.md before removing it.
     marital_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # DEPRECATED (2026-07-06, same rationale as `marital_status` above): the
+    # `dependents` table (rows linked via `household_members`) is the
+    # authoritative, entity-based source of dependent data going forward —
+    # it carries date_of_birth/dependent_type/is_tax_dependent that this
+    # integer count cannot. Do NOT write new business logic against this
+    # field; it is not kept in sync with the `dependents` table.
     dependents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     country: Mapped[str | None] = mapped_column(String(100), nullable=True)
     state_province: Mapped[str | None] = mapped_column(String(100), nullable=True)

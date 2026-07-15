@@ -14,7 +14,9 @@ from app.config import get_settings
 settings = get_settings()
 
 _LOG_FORMAT_DEV = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
-_LOG_FORMAT_JSON = '{"time":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":%(message)s}'
+_LOG_FORMAT_JSON = (
+    '{"time":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":%(message)s}'
+)
 
 
 def configure_logging() -> None:

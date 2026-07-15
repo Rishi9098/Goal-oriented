@@ -14,12 +14,15 @@ from app.schemas.financials import (
     AssetUpdate,
     ExpenseCreate,
     ExpenseResponse,
+    ExpenseUpdate,
     IncomeSourceCreate,
     IncomeSourceResponse,
+    IncomeSourceUpdate,
     LiabilityCreate,
     LiabilityResponse,
     LiabilityUpdate,
 )
+from app.services import financials_service
 
 router = APIRouter(prefix="/financials", tags=["financials"])
 
@@ -46,11 +49,22 @@ async def create_income(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> IncomeSource:
-    income = IncomeSource(user_id=current_user.id, **body.model_dump())
-    db.add(income)
-    await db.flush()
-    await db.refresh(income)
-    await db.commit()
+    # Reused by the Life Event Engine's Job Change handler — exactly one
+    # implementation of "create an income source", not two.
+    income, _after_state = await financials_service.create_income_source(db, current_user, body)
+    return income
+
+
+@router.patch("/income/{income_id}", response_model=IncomeSourceResponse)
+async def update_income(
+    income_id: uuid.UUID,
+    body: IncomeSourceUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> IncomeSource:
+    income, _before_state, _after_state = await financials_service.update_income_source(
+        db, current_user, income_id, body
+    )
     return income
 
 
@@ -60,18 +74,9 @@ async def delete_income(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    result = await db.execute(
-        select(IncomeSource).where(
-            IncomeSource.id == income_id,
-            IncomeSource.user_id == current_user.id,
-        )
-    )
-    income = result.scalar_one_or_none()
-    if income is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Income source not found")
-    income.is_active = False
-    db.add(income)
-    await db.commit()
+    # Reused by the Life Event Engine's Job Change handler — exactly one
+    # implementation of "deactivate an income source", not two.
+    await financials_service.deactivate_income_source(db, current_user, income_id)
 
 
 # ── Expenses ─────────────────────────────────────────────────────────────────
@@ -96,11 +101,22 @@ async def create_expense(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Expense:
-    expense = Expense(user_id=current_user.id, **body.model_dump())
-    db.add(expense)
-    await db.flush()
-    await db.refresh(expense)
-    await db.commit()
+    # Reused by the Life Event Engine's Major Medical Event handler —
+    # exactly one implementation of "create an expense", not two.
+    expense, _after_state = await financials_service.create_expense(db, current_user, body)
+    return expense
+
+
+@router.patch("/expenses/{expense_id}", response_model=ExpenseResponse)
+async def update_expense(
+    expense_id: uuid.UUID,
+    body: ExpenseUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Expense:
+    expense, _before_state, _after_state = await financials_service.update_expense(
+        db, current_user, expense_id, body
+    )
     return expense
 
 
@@ -121,7 +137,6 @@ async def delete_expense(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
     expense.is_active = False
     db.add(expense)
-    await db.commit()
 
 
 # ── Assets ───────────────────────────────────────────────────────────────────
@@ -146,11 +161,9 @@ async def create_asset(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Asset:
-    asset = Asset(user_id=current_user.id, **body.model_dump())
-    db.add(asset)
-    await db.flush()
-    await db.refresh(asset)
-    await db.commit()
+    # Reused by the Life Event Engine's Bonus handler — exactly one
+    # implementation of "create an asset", not two.
+    asset, _after_state = await financials_service.create_asset(db, current_user, body)
     return asset
 
 
@@ -176,7 +189,6 @@ async def update_asset(
     db.add(asset)
     await db.flush()
     await db.refresh(asset)
-    await db.commit()
     return asset
 
 
@@ -186,18 +198,9 @@ async def delete_asset(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    result = await db.execute(
-        select(Asset).where(
-            Asset.id == asset_id,
-            Asset.user_id == current_user.id,
-        )
-    )
-    asset = result.scalar_one_or_none()
-    if asset is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
-    asset.is_active = False
-    db.add(asset)
-    await db.commit()
+    # Reused by the Life Event Engine's Home Sale handler — exactly one
+    # implementation of "deactivate an asset", not two.
+    await financials_service.deactivate_asset(db, current_user, asset_id)
 
 
 # ── Liabilities ──────────────────────────────────────────────────────────────
@@ -222,11 +225,9 @@ async def create_liability(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Liability:
-    liability = Liability(user_id=current_user.id, **body.model_dump())
-    db.add(liability)
-    await db.flush()
-    await db.refresh(liability)
-    await db.commit()
+    # Reused by the Life Event Engine's New Loan handler — exactly one
+    # implementation of "create a liability", not two.
+    liability, _after_state = await financials_service.create_liability(db, current_user, body)
     return liability
 
 
@@ -252,7 +253,6 @@ async def update_liability(
     db.add(liability)
     await db.flush()
     await db.refresh(liability)
-    await db.commit()
     return liability
 
 
@@ -262,15 +262,7 @@ async def delete_liability(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    result = await db.execute(
-        select(Liability).where(
-            Liability.id == liability_id,
-            Liability.user_id == current_user.id,
-        )
-    )
-    liability = result.scalar_one_or_none()
-    if liability is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Liability not found")
-    liability.is_active = False
-    db.add(liability)
-    await db.commit()
+    # Reused by the Life Event Engine's Loan Payoff handler
+    # (Milestone 2, Phase B.1) — exactly one implementation of "close a
+    # liability", not two.
+    await financials_service.close_liability(db, current_user, liability_id)

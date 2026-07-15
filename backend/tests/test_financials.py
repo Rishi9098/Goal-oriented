@@ -1,7 +1,15 @@
 """Integration tests for financial data endpoints (income, expenses, assets, liabilities, assumptions, profile)."""
 
+from datetime import date, timedelta
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.assumptions import FinancialAssumptions
+from app.models.user import User
+from tests.conftest import TestSessionLocal
 
 
 @pytest.mark.asyncio
@@ -35,6 +43,56 @@ class TestIncome:
         assert resp.status_code == 204
         list_resp = await client.get("/api/v1/financials/income", headers=auth_headers)
         assert list_resp.json() == []
+
+    async def test_update_income(self, client: AsyncClient, auth_headers: dict):
+        payload = {"source_type": "salary", "annual_amount": 120000}
+        create = await client.post("/api/v1/financials/income", json=payload, headers=auth_headers)
+        income_id = create.json()["id"]
+        resp = await client.patch(
+            f"/api/v1/financials/income/{income_id}",
+            json={"annual_amount": 130000},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["annual_amount"] == 130000
+
+    async def test_update_income_ignores_source_type(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        payload = {"source_type": "salary", "annual_amount": 120000}
+        create = await client.post("/api/v1/financials/income", json=payload, headers=auth_headers)
+        income_id = create.json()["id"]
+        resp = await client.patch(
+            f"/api/v1/financials/income/{income_id}",
+            json={"source_type": "bonus", "annual_amount": 121000},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["source_type"] == "salary"
+        assert data["annual_amount"] == 121000
+
+    async def test_update_nonexistent_income(self, client: AsyncClient, auth_headers: dict):
+        resp = await client.patch(
+            "/api/v1/financials/income/00000000-0000-0000-0000-000000000000",
+            json={"annual_amount": 1000},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+    async def test_update_deleted_income_returns_404(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        payload = {"source_type": "salary", "annual_amount": 120000}
+        create = await client.post("/api/v1/financials/income", json=payload, headers=auth_headers)
+        income_id = create.json()["id"]
+        await client.delete(f"/api/v1/financials/income/{income_id}", headers=auth_headers)
+        resp = await client.patch(
+            f"/api/v1/financials/income/{income_id}",
+            json={"annual_amount": 1000},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
 
     async def test_delete_nonexistent_income(self, client: AsyncClient, auth_headers: dict):
         resp = await client.delete(
@@ -84,6 +142,48 @@ class TestExpenses:
         expense_id = create.json()["id"]
         resp = await client.delete(f"/api/v1/financials/expenses/{expense_id}", headers=auth_headers)
         assert resp.status_code == 204
+
+    async def test_update_expense(self, client: AsyncClient, auth_headers: dict):
+        payload = {"category": "housing", "monthly_amount": 2400}
+        create = await client.post(
+            "/api/v1/financials/expenses", json=payload, headers=auth_headers
+        )
+        expense_id = create.json()["id"]
+        resp = await client.patch(
+            f"/api/v1/financials/expenses/{expense_id}",
+            json={"monthly_amount": 2500, "description": "Rent (incl. parking)"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["monthly_amount"] == 2500
+        assert data["description"] == "Rent (incl. parking)"
+
+    async def test_update_expense_ignores_category(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        payload = {"category": "housing", "monthly_amount": 2400}
+        create = await client.post(
+            "/api/v1/financials/expenses", json=payload, headers=auth_headers
+        )
+        expense_id = create.json()["id"]
+        resp = await client.patch(
+            f"/api/v1/financials/expenses/{expense_id}",
+            json={"category": "food", "monthly_amount": 2450},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["category"] == "housing"
+        assert data["monthly_amount"] == 2450
+
+    async def test_update_nonexistent_expense(self, client: AsyncClient, auth_headers: dict):
+        resp = await client.patch(
+            "/api/v1/financials/expenses/00000000-0000-0000-0000-000000000000",
+            json={"monthly_amount": 100},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
 
     async def test_absurdly_large_monthly_amount_rejected(
         self, client: AsyncClient, auth_headers: dict
@@ -216,6 +316,52 @@ class TestAssumptions:
         resp = await client.get("/api/v1/assumptions")
         assert resp.status_code == 403
 
+    async def test_get_assumptions_concurrent_first_access_does_not_error(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        db: AsyncSession,
+        user: User,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Simulates two near-simultaneous first-access requests for a user
+        with no saved assumptions yet: this request's own insert collides
+        with one a concurrent request already committed. The fix in
+        app.routers.assumptions.get_assumptions must recover by returning
+        the already-created row instead of propagating the database's
+        unique-constraint error (Milestone1ImplementationSpecification_
+        FINAL.md §9). A second, independent session simulates the winning
+        concurrent request; `db.flush` is forced to fail once to reproduce
+        the exact ordering a real race would produce, since ordering that
+        precisely can't be reproduced by timing alone against one shared
+        test session.
+        """
+        async with TestSessionLocal() as other_session:
+            other_session.add(
+                FinancialAssumptions(
+                    user_id=user.id,
+                    inflation_rate=0.03,
+                    expected_return_conservative=0.05,
+                    expected_return_balanced=0.07,
+                    expected_return_aggressive=0.09,
+                    tax_rate=0.22,
+                    retirement_age=65,
+                    social_security_monthly=0.0,
+                )
+            )
+            await other_session.commit()
+
+        async def force_integrity_error(*args: object, **kwargs: object) -> None:
+            raise IntegrityError("insert", {}, Exception("UNIQUE constraint failed"))
+
+        monkeypatch.setattr(db, "flush", force_integrity_error)
+
+        resp = await client.get("/api/v1/assumptions", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["inflation_rate"] == 0.03
+        assert data["retirement_age"] == 65
+
 
 @pytest.mark.asyncio
 class TestProfile:
@@ -255,3 +401,74 @@ class TestProfile:
         resp = await client.get("/api/v1/profile", headers=auth_headers)
         assert resp.status_code == 200
         assert resp.json()["country"] == "CA"
+
+
+@pytest.mark.asyncio
+class TestFinancialsDoNotAffectGoalCalculations:
+    """The single most important test in Milestone 1
+    (Milestone1ImplementationSpecification_FINAL.md §15): none of the fields
+    this milestone makes editable — income, expense, asset, and liability
+    values, or planning assumptions — are part of the Monte Carlo
+    Calculation Context, so creating, editing, or deleting any of them must
+    never change an existing goal's stored probability.
+    """
+
+    async def test_income_expense_asset_liability_and_assumptions_changes_do_not_alter_goal_probability(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
+        goal_payload = {
+            "name": "Retire Comfortably",
+            "category": "retirement",
+            "target_amount": 500000,
+            "current_amount": 10000,
+            "target_date": (date.today() + timedelta(days=365 * 20)).isoformat(),
+            "monthly_contribution": 500,
+            "risk_profile": "balanced",
+            "priority": 1,
+        }
+        create_goal = await client.post("/api/v1/goals", json=goal_payload, headers=auth_headers)
+        assert create_goal.status_code == 201
+        goal_id = create_goal.json()["id"]
+        probability_before = create_goal.json()["probability"]
+
+        income = await client.post(
+            "/api/v1/financials/income",
+            json={"source_type": "salary", "annual_amount": 120000},
+            headers=auth_headers,
+        )
+        await client.patch(
+            f"/api/v1/financials/income/{income.json()['id']}",
+            json={"annual_amount": 200000},
+            headers=auth_headers,
+        )
+        await client.post(
+            "/api/v1/financials/expenses",
+            json={"category": "housing", "monthly_amount": 2400},
+            headers=auth_headers,
+        )
+        asset = await client.post(
+            "/api/v1/financials/assets",
+            json={"asset_type": "checking", "current_value": 8500},
+            headers=auth_headers,
+        )
+        await client.patch(
+            f"/api/v1/financials/assets/{asset.json()['id']}",
+            json={"current_value": 500000},
+            headers=auth_headers,
+        )
+        liability = await client.post(
+            "/api/v1/financials/liabilities",
+            json={"liability_type": "mortgage", "balance": 310000, "monthly_payment": 1850},
+            headers=auth_headers,
+        )
+        await client.delete(
+            f"/api/v1/financials/liabilities/{liability.json()['id']}", headers=auth_headers
+        )
+        await client.put(
+            "/api/v1/assumptions", json={"inflation_rate": 0.08}, headers=auth_headers
+        )
+
+        goals_after = await client.get("/api/v1/goals", headers=auth_headers)
+        assert goals_after.status_code == 200
+        goal_after = next(g for g in goals_after.json() if g["id"] == goal_id)
+        assert goal_after["probability"] == probability_before

@@ -114,3 +114,18 @@ class TestReports:
         now = datetime.now(UTC)
         diff = abs((now - generated).total_seconds())
         assert diff < 10
+
+    async def test_dashboard_and_reports_show_identical_probability(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
+        """PCA-3 / ADR-001: Dashboard and Reports must read the same persisted
+        value for identical inputs, never two independent simulation runs."""
+        await client.post("/api/v1/goals", json=GOAL_PAYLOAD, headers=auth_headers)
+
+        dashboard_resp = await client.get("/api/v1/dashboard", headers=auth_headers)
+        reports_resp = await client.get("/api/v1/reports/summary", headers=auth_headers)
+
+        dashboard_data = dashboard_resp.json()
+        reports_data = reports_resp.json()
+        assert dashboard_data["plan_health_score"] == reports_data["plan_health_score"]
+        assert dashboard_data["goals_on_track"] == reports_data["goals_on_track"]

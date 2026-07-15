@@ -1,11 +1,16 @@
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.goal import Goal
+    from app.models.simulation import Simulation
 
 
 class User(Base):
@@ -29,10 +34,10 @@ class User(Base):
         nullable=False,
     )
 
-    goals: Mapped[list["Goal"]] = relationship(  # type: ignore[name-defined]
+    goals: Mapped[list["Goal"]] = relationship(
         "Goal", back_populates="user", cascade="all, delete-orphan"
     )
-    simulations: Mapped[list["Simulation"]] = relationship(  # type: ignore[name-defined]
+    simulations: Mapped[list["Simulation"]] = relationship(
         "Simulation", back_populates="user", cascade="all, delete-orphan"
     )
 

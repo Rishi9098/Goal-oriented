@@ -4,7 +4,7 @@ the response header so logs can be correlated with client traces."""
 import uuid
 from contextvars import ContextVar
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -18,11 +18,11 @@ def get_request_id() -> str:
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: object) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         req_id = request.headers.get(REQUEST_ID_HEADER) or str(uuid.uuid4())
         token = _request_id_var.set(req_id)
         try:
-            response: Response = await call_next(request)  # type: ignore[arg-type]
+            response = await call_next(request)
             response.headers[REQUEST_ID_HEADER] = req_id
             return response
         finally:

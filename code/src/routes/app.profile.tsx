@@ -1,39 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Pencil, X } from "lucide-react";
-import { AppShell } from "@/components/app-shell";
 import { auth } from "@/lib/api";
 import { api } from "@/lib/api";
+import type { FamilyMemberSummary } from "@/lib/api";
+import { relationshipLabel } from "@/lib/family";
 
 export const Route = createFileRoute("/app/profile")({
   head: () => ({ meta: [{ title: "Profile — Northstar" }] }),
+  staticData: { shellTitle: "Profile" },
   component: Profile,
 });
 
 type FormState = {
   fullName: string;
   email: string;
-  household: string;
-  riskProfile: string;
 };
 
 type Status = "idle" | "saving" | "saved" | "error";
-
-const RISK_OPTIONS = [
-  { value: "conservative", label: "Conservative (30/70)" },
-  { value: "balanced", label: "Balanced (60/40)" },
-  { value: "aggressive", label: "Aggressive (90/10)" },
-];
-
-const HOUSEHOLD_OPTIONS = [
-  "1 adult",
-  "2 adults",
-  "2 adults, 1 child",
-  "2 adults, 2 children",
-  "2 adults, 3+ children",
-  "Single parent, 1 child",
-  "Single parent, 2+ children",
-];
 
 function initials(name: string) {
   return name
@@ -49,38 +33,34 @@ function Profile() {
   const [form, setForm] = useState<FormState>({
     fullName: "",
     email: "",
-    household: "2 adults, 1 child",
-    riskProfile: "balanced",
   });
   const [saved, setSaved] = useState<FormState | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [loading, setLoading] = useState(true);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMemberSummary[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    auth.me().then((user) => {
+    // PCA-2: household data now comes from the certified Family service
+    // (api.getFamilyHome), never from user_profiles.marital_status/dependents.
+    // api.getProfile() is no longer called here — nothing on this screen
+    // reads from it anymore once those two fields are removed.
+    Promise.all([auth.me(), api.getFamilyHome()]).then(([user, familyHome]) => {
       const initial: FormState = {
         fullName: user.full_name ?? "",
         email: user.email,
-        household: "2 adults, 1 child",
-        riskProfile: "balanced",
       };
       setForm(initial);
       setSaved(initial);
+      setFamilyMembers(familyHome.members);
       setLoading(false);
     });
   }, []);
 
   const isDirty =
-    saved !== null &&
-    (form.fullName !== saved.fullName ||
-      form.email !== saved.email ||
-      form.household !== saved.household ||
-      form.riskProfile !== saved.riskProfile);
+    saved !== null && (form.fullName !== saved.fullName || form.email !== saved.email);
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
     if (status === "saved") setStatus("idle");
@@ -97,13 +77,6 @@ function Profile() {
     setStatus("saving");
     try {
       await auth.updateMe({ full_name: form.fullName });
-      await api.upsertProfile({
-        marital_status: form.household.includes("Single parent") ? "single" : undefined,
-        dependents: (() => {
-          const m = form.household.match(/(\d+)\s*child/);
-          return m ? parseInt(m[1]) : 0;
-        })(),
-      });
       setSaved(form);
       setStatus("saved");
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -115,152 +88,120 @@ function Profile() {
 
   if (loading) {
     return (
-      <AppShell title="Profile">
-        <div className="flex items-center justify-center h-48 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
-        </div>
-      </AppShell>
+      <div className="flex items-center justify-center h-48 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+      </div>
     );
   }
 
   const avatarText = initials(form.fullName) || "?";
-  const riskLabel =
-    RISK_OPTIONS.find((o) => o.value === form.riskProfile)?.label ??
-    form.riskProfile;
 
   return (
-    <AppShell title="Profile">
-      <div className="max-w-2xl space-y-6">
-        {/* Avatar header */}
-        <div className="surface-card p-6 flex items-center gap-4">
-          <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary to-cyan grid place-items-center text-2xl font-medium text-primary-foreground shrink-0 select-none">
-            {avatarText}
+    <div className="max-w-2xl space-y-6">
+      {/* Avatar header */}
+      <div className="surface-card p-6 flex items-center gap-4">
+        <div className="h-16 w-16 rounded-full bg-gradient-to-br from-primary to-cyan grid place-items-center text-2xl font-medium text-primary-foreground shrink-0 select-none">
+          {avatarText}
+        </div>
+        <div>
+          <p className="font-display text-xl">{form.fullName || "Your Name"}</p>
+          <p className="text-sm text-muted-foreground">{form.email}</p>
+        </div>
+      </div>
+
+      {/* Editable form */}
+      <form onSubmit={handleSubmit} noValidate>
+        <div className="surface-card p-6 space-y-5">
+          <div className="flex items-center justify-between mb-1">
+            <p className="font-display text-sm uppercase tracking-widest text-muted-foreground">
+              Personal details
+            </p>
+            {status === "saved" && (
+              <span className="flex items-center gap-1 text-xs text-emerald-400">
+                <Check className="h-3.5 w-3.5" /> Saved
+              </span>
+            )}
+            {status === "error" && <span className="text-xs text-red-400">Failed to save</span>}
           </div>
-          <div>
-            <p className="font-display text-xl">
-              {form.fullName || "Your Name"}
+
+          <Field label="Full name">
+            <input
+              name="fullName"
+              value={form.fullName}
+              onChange={handleChange}
+              placeholder="Alex Reyes"
+              className="field-input"
+              required
+              minLength={2}
+            />
+          </Field>
+
+          <Field label="Email address">
+            <input
+              name="email"
+              type="email"
+              value={form.email}
+              onChange={handleChange}
+              placeholder="you@example.com"
+              className="field-input"
+              required
+            />
+          </Field>
+
+          <Field label="Household">
+            <div className="rounded-lg border border-border bg-surface px-3 py-2.5 space-y-1.5">
+              {familyMembers.map((member) => (
+                <div key={member.id} className="flex items-center justify-between text-sm">
+                  <span>{member.name ?? relationshipLabel(member.relationship_type)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {relationshipLabel(member.relationship_type)}
+                    {!member.name && member.relationship_type !== "self" && " · not yet added"}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              This reflects the family details you&apos;ve shared and can&apos;t be edited here yet.
             </p>
-            <p className="text-sm text-muted-foreground">
-              {form.email} · {riskLabel}
-            </p>
+          </Field>
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-3 pt-2">
+            {isDirty && (
+              <button
+                type="button"
+                onClick={handleReset}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:border-border-strong hover:text-foreground transition"
+              >
+                <X className="h-3.5 w-3.5" />
+                Discard
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={!isDirty || status === "saving"}
+              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-cyan px-5 py-2 text-sm font-medium text-primary-foreground shadow-glow hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {status === "saving" ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                <>
+                  <Pencil className="h-3.5 w-3.5" />
+                  Save changes
+                </>
+              )}
+            </button>
           </div>
         </div>
-
-        {/* Editable form */}
-        <form onSubmit={handleSubmit} noValidate>
-          <div className="surface-card p-6 space-y-5">
-            <div className="flex items-center justify-between mb-1">
-              <p className="font-display text-sm uppercase tracking-widest text-muted-foreground">
-                Personal details
-              </p>
-              {status === "saved" && (
-                <span className="flex items-center gap-1 text-xs text-emerald-400">
-                  <Check className="h-3.5 w-3.5" /> Saved
-                </span>
-              )}
-              {status === "error" && (
-                <span className="text-xs text-red-400">Failed to save</span>
-              )}
-            </div>
-
-            <Field label="Full name">
-              <input
-                name="fullName"
-                value={form.fullName}
-                onChange={handleChange}
-                placeholder="Alex Reyes"
-                className="field-input"
-                required
-                minLength={2}
-              />
-            </Field>
-
-            <Field label="Email address">
-              <input
-                name="email"
-                type="email"
-                value={form.email}
-                onChange={handleChange}
-                placeholder="you@example.com"
-                className="field-input"
-                required
-              />
-            </Field>
-
-            <Field label="Household">
-              <select
-                name="household"
-                value={form.household}
-                onChange={handleChange}
-                className="field-input"
-              >
-                {HOUSEHOLD_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Risk profile">
-              <select
-                name="riskProfile"
-                value={form.riskProfile}
-                onChange={handleChange}
-                className="field-input"
-              >
-                {RISK_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            {/* Actions */}
-            <div className="flex items-center justify-end gap-3 pt-2">
-              {isDirty && (
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:border-border-strong hover:text-foreground transition"
-                >
-                  <X className="h-3.5 w-3.5" />
-                  Discard
-                </button>
-              )}
-              <button
-                type="submit"
-                disabled={!isDirty || status === "saving"}
-                className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-cyan px-5 py-2 text-sm font-medium text-primary-foreground shadow-glow hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {status === "saving" ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Saving…
-                  </>
-                ) : (
-                  <>
-                    <Pencil className="h-3.5 w-3.5" />
-                    Save changes
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </AppShell>
+      </form>
+    </div>
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
       <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide">

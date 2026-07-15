@@ -19,6 +19,11 @@ class IncomeSourceCreate(BaseModel):
     annual_amount: float = Field(gt=0, le=_MAX_ANNUAL_AMOUNT)
 
 
+class IncomeSourceUpdate(BaseModel):
+    description: str | None = Field(default=None, max_length=255)
+    annual_amount: float | None = Field(default=None, gt=0, le=_MAX_ANNUAL_AMOUNT)
+
+
 class IncomeSourceResponse(IncomeSourceCreate):
     id: uuid.UUID
     user_id: uuid.UUID
@@ -33,6 +38,11 @@ class ExpenseCreate(BaseModel):
     category: str = Field(max_length=50)
     description: str | None = Field(default=None, max_length=255)
     monthly_amount: float = Field(ge=0, le=_MAX_MONTHLY_AMOUNT)
+
+
+class ExpenseUpdate(BaseModel):
+    description: str | None = Field(default=None, max_length=255)
+    monthly_amount: float | None = Field(default=None, ge=0, le=_MAX_MONTHLY_AMOUNT)
 
 
 class ExpenseResponse(ExpenseCreate):

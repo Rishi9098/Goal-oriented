@@ -4,6 +4,7 @@ Authentication service: password hashing, JWT creation and verification.
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -16,21 +17,23 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    # passlib is untyped; CryptContext.hash() is known to return str at runtime.
+    return cast(str, pwd_context.hash(password))
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    # passlib is untyped; CryptContext.verify() is known to return bool at runtime.
+    return cast(bool, pwd_context.verify(plain, hashed))
 
 
 def _create_token(
     subject: str,
     token_type: str,
     expires_delta: timedelta,
-    extra: dict | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> str:
     now = datetime.now(UTC)
-    payload: dict = {
+    payload: dict[str, Any] = {
         "sub": subject,
         "type": token_type,
         "iat": now,
@@ -39,7 +42,8 @@ def _create_token(
     }
     if extra:
         payload.update(extra)
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    # python-jose is untyped; jwt.encode() is known to return str at runtime.
+    return cast(str, jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm))
 
 
 def create_access_token(user_id: str) -> str:
@@ -58,14 +62,18 @@ def create_refresh_token(user_id: str) -> str:
     )
 
 
-def decode_token(token: str) -> dict:
+def decode_token(token: str) -> dict[str, Any]:
     """
     Decode and validate a JWT.  Raises JWTError on invalid / expired tokens.
     """
-    return jwt.decode(
-        token,
-        settings.jwt_secret_key,
-        algorithms=[settings.jwt_algorithm],
+    # python-jose is untyped; jwt.decode() is known to return dict[str, Any] at runtime.
+    return cast(
+        dict[str, Any],
+        jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+        ),
     )
 
 
@@ -79,6 +87,6 @@ def get_user_id_from_token(token: str, expected_type: str = "access") -> str:
         raise ValueError(f"Expected token type '{expected_type}'")
 
     user_id = payload.get("sub")
-    if not user_id:
+    if not isinstance(user_id, str) or not user_id:
         raise ValueError("Token missing subject")
     return user_id

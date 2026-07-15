@@ -7,6 +7,7 @@ from app.middleware.auth import get_current_user
 from app.models.profile import UserProfile
 from app.models.user import User
 from app.schemas.profile import UserProfileResponse, UserProfileUpdate
+from app.services import profile_service
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -31,22 +32,9 @@ async def upsert_profile(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> UserProfile:
-    result = await db.execute(
-        select(UserProfile).where(UserProfile.user_id == current_user.id)
+    # Reused by the Life Event Engine's Job Change handler — exactly one
+    # implementation of "create-or-update the profile", not two.
+    profile, _before_state, _after_state = await profile_service.update_profile_fields(
+        db, current_user, body.model_dump(exclude_unset=True)
     )
-    profile = result.scalar_one_or_none()
-
-    data = body.model_dump(exclude_unset=True)
-
-    if profile is None:
-        profile = UserProfile(user_id=current_user.id, **data)
-        db.add(profile)
-    else:
-        for field, value in data.items():
-            setattr(profile, field, value)
-        db.add(profile)
-
-    await db.flush()
-    await db.refresh(profile)
-    await db.commit()
     return profile

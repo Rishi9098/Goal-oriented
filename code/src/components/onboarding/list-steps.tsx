@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, Loader2, Plus, Trash2 } from "lucide-react";
 import type { Asset, Expense, IncomeSource, Liability } from "@/lib/api";
+import {
+  INCOME_TYPES,
+  EXPENSE_CATEGORIES,
+  LIQUID_ASSET_TYPES,
+  INVESTMENT_TYPES,
+  LIABILITY_TYPES,
+} from "@/lib/financial-labels";
 import { InputField, SelectField } from "./wizard-steps";
 
 // ── Currency formatter ────────────────────────────────────────────────────────
@@ -12,50 +19,9 @@ const fmt = (n: number) =>
     maximumFractionDigits: 0,
   }).format(n);
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const INCOME_TYPES = [
-  { value: "salary", label: "Salary / wages" },
-  { value: "self_employment", label: "Self-employment" },
-  { value: "rental", label: "Rental income" },
-  { value: "investment", label: "Investment income" },
-  { value: "pension", label: "Pension / annuity" },
-  { value: "other", label: "Other" },
-];
-
-const EXPENSE_CATEGORIES = [
-  { value: "housing", label: "Housing (rent/mortgage)" },
-  { value: "transport", label: "Transport" },
-  { value: "food", label: "Food & groceries" },
-  { value: "utilities", label: "Utilities" },
-  { value: "healthcare", label: "Healthcare" },
-  { value: "insurance", label: "Insurance" },
-  { value: "entertainment", label: "Entertainment" },
-  { value: "other", label: "Other" },
-];
-
-const LIQUID_ASSET_TYPES = [
-  { value: "checking", label: "Checking account" },
-  { value: "savings", label: "Savings account" },
-  { value: "money_market", label: "Money market" },
-];
-
-const INVESTMENT_TYPES = [
-  { value: "brokerage", label: "Brokerage account" },
-  { value: "retirement_401k", label: "401(k)" },
-  { value: "retirement_ira", label: "IRA / Roth IRA" },
-  { value: "real_estate", label: "Real estate" },
-  { value: "other", label: "Other investment" },
-];
-
-const LIABILITY_TYPES = [
-  { value: "mortgage", label: "Mortgage" },
-  { value: "auto_loan", label: "Auto loan" },
-  { value: "student_loan", label: "Student loan" },
-  { value: "credit_card", label: "Credit card" },
-  { value: "personal_loan", label: "Personal loan" },
-  { value: "other", label: "Other debt" },
-];
+// Value/label pairs now live in lib/financial-labels.ts (MicrocopyAudit.md
+// Phase 4) so Financials can look up the same friendly labels shown here,
+// instead of displaying a raw stored value verbatim.
 
 // ── Shared list display ───────────────────────────────────────────────────────
 
@@ -190,30 +156,72 @@ export function StepIncome({
   nextLoading,
 }: {
   items: IncomeSource[];
-  onAdd: (data: { source_type: string; description?: string; annual_amount: number }) => Promise<void>;
+  onAdd: (data: {
+    source_type: string;
+    description?: string;
+    annual_amount: number;
+  }) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
   onNext: () => void;
   onBack: () => void;
   nextLoading: boolean;
 }) {
-  const [form, setForm] = useState<IncomeForm>({ source_type: "salary", description: "", annual_amount: "" });
+  const [form, setForm] = useState<IncomeForm>({
+    source_type: "salary",
+    description: "",
+    annual_amount: "",
+  });
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = Number(form.annual_amount);
-    if (!amount || amount <= 0) { setError("Enter a valid annual amount."); return; }
+    if (!amount || amount <= 0) {
+      setError("Enter a valid annual amount.");
+      return;
+    }
     setError(null);
     setAdding(true);
     try {
-      await onAdd({ source_type: form.source_type, description: form.description || undefined, annual_amount: amount });
+      await onAdd({
+        source_type: form.source_type,
+        description: form.description || undefined,
+        annual_amount: amount,
+      });
       setForm({ source_type: "salary", description: "", annual_amount: "" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add.");
     } finally {
       setAdding(false);
     }
+  };
+
+  // A typed-but-not-yet-added amount must never be silently discarded by
+  // Continue/Skip — auto-save it first, then advance (or stay put and show
+  // the error if the save itself fails).
+  const pendingAmount = Number(form.annual_amount);
+  const hasPendingEntry = pendingAmount > 0;
+
+  const handleNext = async () => {
+    if (hasPendingEntry) {
+      setError(null);
+      setAdding(true);
+      try {
+        await onAdd({
+          source_type: form.source_type,
+          description: form.description || undefined,
+          annual_amount: pendingAmount,
+        });
+        setForm({ source_type: "salary", description: "", annual_amount: "" });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to add.");
+        setAdding(false);
+        return;
+      }
+      setAdding(false);
+    }
+    onNext();
   };
 
   const rows: ListRow[] = items.map((i) => ({
@@ -233,13 +241,35 @@ export function StepIncome({
       <form onSubmit={handleAdd}>
         <AddFormShell label="Add income source" error={error} adding={adding}>
           <div className="grid grid-cols-2 gap-3">
-            <SelectField label="Type" value={form.source_type} onChange={(v) => setForm((f) => ({ ...f, source_type: v }))} options={INCOME_TYPES} />
-            <InputField label="Annual amount ($)" type="number" value={form.annual_amount} onChange={(v) => setForm((f) => ({ ...f, annual_amount: v }))} placeholder="80000" min="1" />
+            <SelectField
+              label="Type"
+              value={form.source_type}
+              onChange={(v) => setForm((f) => ({ ...f, source_type: v }))}
+              options={INCOME_TYPES}
+            />
+            <InputField
+              label="Annual amount ($)"
+              type="number"
+              value={form.annual_amount}
+              onChange={(v) => setForm((f) => ({ ...f, annual_amount: v }))}
+              placeholder="80000"
+              min="1"
+            />
           </div>
-          <InputField label="Description (optional)" value={form.description} onChange={(v) => setForm((f) => ({ ...f, description: v }))} placeholder="e.g. Software Engineer salary" />
+          <InputField
+            label="Description (optional)"
+            value={form.description}
+            onChange={(v) => setForm((f) => ({ ...f, description: v }))}
+            placeholder="e.g. Software Engineer salary"
+          />
         </AddFormShell>
       </form>
-      <ListNavRow onBack={onBack} onNext={onNext} hasItems={items.length > 0} loading={nextLoading} />
+      <ListNavRow
+        onBack={onBack}
+        onNext={handleNext}
+        hasItems={items.length > 0 || hasPendingEntry}
+        loading={nextLoading || adding}
+      />
     </>
   );
 }
@@ -257,30 +287,72 @@ export function StepExpenses({
   nextLoading,
 }: {
   items: Expense[];
-  onAdd: (data: { category: string; description?: string; monthly_amount: number }) => Promise<void>;
+  onAdd: (data: {
+    category: string;
+    description?: string;
+    monthly_amount: number;
+  }) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
   onNext: () => void;
   onBack: () => void;
   nextLoading: boolean;
 }) {
-  const [form, setForm] = useState<ExpenseForm>({ category: "housing", description: "", monthly_amount: "" });
+  const [form, setForm] = useState<ExpenseForm>({
+    category: "housing",
+    description: "",
+    monthly_amount: "",
+  });
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = Number(form.monthly_amount);
-    if (!amount || amount < 0) { setError("Enter a valid monthly amount."); return; }
+    if (!amount || amount < 0) {
+      setError("Enter a valid monthly amount.");
+      return;
+    }
     setError(null);
     setAdding(true);
     try {
-      await onAdd({ category: form.category, description: form.description || undefined, monthly_amount: amount });
+      await onAdd({
+        category: form.category,
+        description: form.description || undefined,
+        monthly_amount: amount,
+      });
       setForm({ category: "housing", description: "", monthly_amount: "" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add.");
     } finally {
       setAdding(false);
     }
+  };
+
+  // A typed-but-not-yet-added amount must never be silently discarded by
+  // Continue/Skip — auto-save it first, then advance (or stay put and show
+  // the error if the save itself fails).
+  const pendingAmount = Number(form.monthly_amount);
+  const hasPendingEntry = pendingAmount > 0;
+
+  const handleNext = async () => {
+    if (hasPendingEntry) {
+      setError(null);
+      setAdding(true);
+      try {
+        await onAdd({
+          category: form.category,
+          description: form.description || undefined,
+          monthly_amount: pendingAmount,
+        });
+        setForm({ category: "housing", description: "", monthly_amount: "" });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to add.");
+        setAdding(false);
+        return;
+      }
+      setAdding(false);
+    }
+    onNext();
   };
 
   const rows: ListRow[] = items.map((i) => ({
@@ -300,20 +372,47 @@ export function StepExpenses({
       <form onSubmit={handleAdd}>
         <AddFormShell label="Add expense" error={error} adding={adding}>
           <div className="grid grid-cols-2 gap-3">
-            <SelectField label="Category" value={form.category} onChange={(v) => setForm((f) => ({ ...f, category: v }))} options={EXPENSE_CATEGORIES} />
-            <InputField label="Monthly amount ($)" type="number" value={form.monthly_amount} onChange={(v) => setForm((f) => ({ ...f, monthly_amount: v }))} placeholder="2000" min="0" />
+            <SelectField
+              label="Category"
+              value={form.category}
+              onChange={(v) => setForm((f) => ({ ...f, category: v }))}
+              options={EXPENSE_CATEGORIES}
+            />
+            <InputField
+              label="Monthly amount ($)"
+              type="number"
+              value={form.monthly_amount}
+              onChange={(v) => setForm((f) => ({ ...f, monthly_amount: v }))}
+              placeholder="2000"
+              min="0"
+            />
           </div>
-          <InputField label="Description (optional)" value={form.description} onChange={(v) => setForm((f) => ({ ...f, description: v }))} placeholder="e.g. Rent" />
+          <InputField
+            label="Description (optional)"
+            value={form.description}
+            onChange={(v) => setForm((f) => ({ ...f, description: v }))}
+            placeholder="e.g. Rent"
+          />
         </AddFormShell>
       </form>
-      <ListNavRow onBack={onBack} onNext={onNext} hasItems={items.length > 0} loading={nextLoading} />
+      <ListNavRow
+        onBack={onBack}
+        onNext={handleNext}
+        hasItems={items.length > 0 || hasPendingEntry}
+        loading={nextLoading || adding}
+      />
     </>
   );
 }
 
 // ── Step 6: Liquid assets ─────────────────────────────────────────────────────
 
-type AssetForm = { asset_type: string; institution: string; description: string; current_value: string };
+type AssetForm = {
+  asset_type: string;
+  institution: string;
+  description: string;
+  current_value: string;
+};
 
 function AssetStep({
   title,
@@ -330,30 +429,81 @@ function AssetStep({
   subtitle: string;
   types: { value: string; label: string }[];
   items: Asset[];
-  onAdd: (data: { asset_type: string; institution?: string; description?: string; current_value: number }) => Promise<void>;
+  onAdd: (data: {
+    asset_type: string;
+    institution?: string;
+    description?: string;
+    current_value: number;
+  }) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
   onNext: () => void;
   onBack: () => void;
   nextLoading: boolean;
 }) {
-  const [form, setForm] = useState<AssetForm>({ asset_type: types[0].value, institution: "", description: "", current_value: "" });
+  const [form, setForm] = useState<AssetForm>({
+    asset_type: types[0].value,
+    institution: "",
+    description: "",
+    current_value: "",
+  });
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     const value = Number(form.current_value);
-    if (!value || value < 0) { setError("Enter a valid account balance."); return; }
+    if (!value || value < 0) {
+      setError("Enter a valid account balance.");
+      return;
+    }
     setError(null);
     setAdding(true);
     try {
-      await onAdd({ asset_type: form.asset_type, institution: form.institution || undefined, description: form.description || undefined, current_value: value });
+      await onAdd({
+        asset_type: form.asset_type,
+        institution: form.institution || undefined,
+        description: form.description || undefined,
+        current_value: value,
+      });
       setForm({ asset_type: types[0].value, institution: "", description: "", current_value: "" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add.");
     } finally {
       setAdding(false);
     }
+  };
+
+  // A typed-but-not-yet-added balance must never be silently discarded by
+  // Continue/Skip — auto-save it first, then advance (or stay put and show
+  // the error if the save itself fails).
+  const pendingValue = Number(form.current_value);
+  const hasPendingEntry = pendingValue > 0;
+
+  const handleNext = async () => {
+    if (hasPendingEntry) {
+      setError(null);
+      setAdding(true);
+      try {
+        await onAdd({
+          asset_type: form.asset_type,
+          institution: form.institution || undefined,
+          description: form.description || undefined,
+          current_value: pendingValue,
+        });
+        setForm({
+          asset_type: types[0].value,
+          institution: "",
+          description: "",
+          current_value: "",
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to add.");
+        setAdding(false);
+        return;
+      }
+      setAdding(false);
+    }
+    onNext();
   };
 
   const rows: ListRow[] = items.map((i) => ({
@@ -371,21 +521,50 @@ function AssetStep({
       <form onSubmit={handleAdd}>
         <AddFormShell label="Add account" error={error} adding={adding}>
           <div className="grid grid-cols-2 gap-3">
-            <SelectField label="Type" value={form.asset_type} onChange={(v) => setForm((f) => ({ ...f, asset_type: v }))} options={types} />
-            <InputField label="Current balance ($)" type="number" value={form.current_value} onChange={(v) => setForm((f) => ({ ...f, current_value: v }))} placeholder="10000" min="0" />
+            <SelectField
+              label="Type"
+              value={form.asset_type}
+              onChange={(v) => setForm((f) => ({ ...f, asset_type: v }))}
+              options={types}
+            />
+            <InputField
+              label="Current balance ($)"
+              type="number"
+              value={form.current_value}
+              onChange={(v) => setForm((f) => ({ ...f, current_value: v }))}
+              placeholder="10000"
+              min="0"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <InputField label="Institution (optional)" value={form.institution} onChange={(v) => setForm((f) => ({ ...f, institution: v }))} placeholder="e.g. Chase" />
-            <InputField label="Label (optional)" value={form.description} onChange={(v) => setForm((f) => ({ ...f, description: v }))} placeholder="e.g. Emergency fund" />
+            <InputField
+              label="Institution (optional)"
+              value={form.institution}
+              onChange={(v) => setForm((f) => ({ ...f, institution: v }))}
+              placeholder="e.g. Chase"
+            />
+            <InputField
+              label="Label (optional)"
+              value={form.description}
+              onChange={(v) => setForm((f) => ({ ...f, description: v }))}
+              placeholder="e.g. Emergency fund"
+            />
           </div>
         </AddFormShell>
       </form>
-      <ListNavRow onBack={onBack} onNext={onNext} hasItems={items.length > 0} loading={nextLoading} />
+      <ListNavRow
+        onBack={onBack}
+        onNext={handleNext}
+        hasItems={items.length > 0 || hasPendingEntry}
+        loading={nextLoading || adding}
+      />
     </>
   );
 }
 
-export function StepLiquidAssets(props: Omit<Parameters<typeof AssetStep>[0], "title" | "subtitle" | "types">) {
+export function StepLiquidAssets(
+  props: Omit<Parameters<typeof AssetStep>[0], "title" | "subtitle" | "types">,
+) {
   return (
     <AssetStep
       title="Cash & savings"
@@ -396,7 +575,9 @@ export function StepLiquidAssets(props: Omit<Parameters<typeof AssetStep>[0], "t
   );
 }
 
-export function StepInvestments(props: Omit<Parameters<typeof AssetStep>[0], "title" | "subtitle" | "types">) {
+export function StepInvestments(
+  props: Omit<Parameters<typeof AssetStep>[0], "title" | "subtitle" | "types">,
+) {
   return (
     <AssetStep
       title="Investments"
@@ -441,7 +622,12 @@ export function StepLiabilities({
   nextLoading: boolean;
 }) {
   const [form, setForm] = useState<LiabilityForm>({
-    liability_type: "mortgage", institution: "", description: "", balance: "", interest_rate: "", monthly_payment: "",
+    liability_type: "mortgage",
+    institution: "",
+    description: "",
+    balance: "",
+    interest_rate: "",
+    monthly_payment: "",
   });
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -449,7 +635,10 @@ export function StepLiabilities({
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     const balance = Number(form.balance);
-    if (!balance || balance < 0) { setError("Enter a valid balance."); return; }
+    if (!balance || balance < 0) {
+      setError("Enter a valid balance.");
+      return;
+    }
     setError(null);
     setAdding(true);
     try {
@@ -461,12 +650,56 @@ export function StepLiabilities({
         interest_rate: form.interest_rate ? Number(form.interest_rate) / 100 : undefined,
         monthly_payment: form.monthly_payment ? Number(form.monthly_payment) : undefined,
       });
-      setForm({ liability_type: "mortgage", institution: "", description: "", balance: "", interest_rate: "", monthly_payment: "" });
+      setForm({
+        liability_type: "mortgage",
+        institution: "",
+        description: "",
+        balance: "",
+        interest_rate: "",
+        monthly_payment: "",
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add.");
     } finally {
       setAdding(false);
     }
+  };
+
+  // A typed-but-not-yet-added balance must never be silently discarded by
+  // Continue/Skip — auto-save it first, then advance (or stay put and show
+  // the error if the save itself fails).
+  const pendingBalance = Number(form.balance);
+  const hasPendingEntry = pendingBalance > 0;
+
+  const handleNext = async () => {
+    if (hasPendingEntry) {
+      setError(null);
+      setAdding(true);
+      try {
+        await onAdd({
+          liability_type: form.liability_type,
+          institution: form.institution || undefined,
+          description: form.description || undefined,
+          balance: pendingBalance,
+          interest_rate: form.interest_rate ? Number(form.interest_rate) / 100 : undefined,
+          monthly_payment: form.monthly_payment ? Number(form.monthly_payment) : undefined,
+        });
+        setForm({
+          liability_type: "mortgage",
+          institution: "",
+          description: "",
+          balance: "",
+          interest_rate: "",
+          monthly_payment: "",
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to add.");
+        setAdding(false);
+        return;
+      }
+      setAdding(false);
+    }
+    onNext();
   };
 
   const rows: ListRow[] = items.map((i) => ({
@@ -486,20 +719,63 @@ export function StepLiabilities({
       <form onSubmit={handleAdd}>
         <AddFormShell label="Add debt" error={error} adding={adding}>
           <div className="grid grid-cols-2 gap-3">
-            <SelectField label="Type" value={form.liability_type} onChange={(v) => setForm((f) => ({ ...f, liability_type: v }))} options={LIABILITY_TYPES} />
-            <InputField label="Balance ($)" type="number" value={form.balance} onChange={(v) => setForm((f) => ({ ...f, balance: v }))} placeholder="250000" min="0" />
+            <SelectField
+              label="Type"
+              value={form.liability_type}
+              onChange={(v) => setForm((f) => ({ ...f, liability_type: v }))}
+              options={LIABILITY_TYPES}
+            />
+            <InputField
+              label="Balance ($)"
+              type="number"
+              value={form.balance}
+              onChange={(v) => setForm((f) => ({ ...f, balance: v }))}
+              placeholder="250000"
+              min="0"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <InputField label="Interest rate (% p.a.)" type="number" value={form.interest_rate} onChange={(v) => setForm((f) => ({ ...f, interest_rate: v }))} placeholder="6.5" min="0" max="100" step="0.1" />
-            <InputField label="Monthly payment ($)" type="number" value={form.monthly_payment} onChange={(v) => setForm((f) => ({ ...f, monthly_payment: v }))} placeholder="1500" min="0" />
+            <InputField
+              label="Interest rate (% p.a.)"
+              type="number"
+              value={form.interest_rate}
+              onChange={(v) => setForm((f) => ({ ...f, interest_rate: v }))}
+              placeholder="6.5"
+              min="0"
+              max="100"
+              step="0.1"
+            />
+            <InputField
+              label="Monthly payment ($)"
+              type="number"
+              value={form.monthly_payment}
+              onChange={(v) => setForm((f) => ({ ...f, monthly_payment: v }))}
+              placeholder="1500"
+              min="0"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <InputField label="Institution (optional)" value={form.institution} onChange={(v) => setForm((f) => ({ ...f, institution: v }))} placeholder="e.g. Wells Fargo" />
-            <InputField label="Label (optional)" value={form.description} onChange={(v) => setForm((f) => ({ ...f, description: v }))} placeholder="e.g. Primary mortgage" />
+            <InputField
+              label="Institution (optional)"
+              value={form.institution}
+              onChange={(v) => setForm((f) => ({ ...f, institution: v }))}
+              placeholder="e.g. Wells Fargo"
+            />
+            <InputField
+              label="Label (optional)"
+              value={form.description}
+              onChange={(v) => setForm((f) => ({ ...f, description: v }))}
+              placeholder="e.g. Primary mortgage"
+            />
           </div>
         </AddFormShell>
       </form>
-      <ListNavRow onBack={onBack} onNext={onNext} hasItems={items.length > 0} loading={nextLoading} />
+      <ListNavRow
+        onBack={onBack}
+        onNext={handleNext}
+        hasItems={items.length > 0 || hasPendingEntry}
+        loading={nextLoading || adding}
+      />
     </>
   );
 }

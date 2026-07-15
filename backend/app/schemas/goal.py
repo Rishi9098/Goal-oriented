@@ -42,6 +42,12 @@ class GoalUpdate(BaseModel):
     monthly_contribution: float | None = Field(default=None, ge=0, le=_MAX_MONTHLY_AMOUNT)
     risk_profile: RiskProfile | None = None
     priority: int | None = Field(default=None, ge=1, le=10)
+    # Milestone 2 Task 9: nullable per-goal override of
+    # financial_assumptions.inflation_rate, for education-category goals.
+    # Bound matches FinancialAssumptions.inflation_rate's own [0, 0.5] range
+    # (Milestone2ImplementationContract.md §9). Deliberately NOT part of
+    # planning_service.CALCULATION_CONTEXT_FIELDS — see routers/goals.py.
+    custom_inflation_rate: float | None = Field(default=None, ge=0, le=0.5)
 
 
 class GoalResponse(GoalBase):
@@ -52,5 +58,6 @@ class GoalResponse(GoalBase):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    custom_inflation_rate: float | None = None
 
     model_config = {"from_attributes": True}

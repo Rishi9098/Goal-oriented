@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -16,6 +17,10 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.simulation import Simulation
+    from app.models.user import User
 
 GoalCategory = Enum(
     "retirement",
@@ -55,6 +60,12 @@ class Goal(Base):
     monthly_contribution: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     risk_profile: Mapped[str] = mapped_column(RiskProfile, nullable=False, default="balanced")
     priority: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    # Nullable, additive (Milestone2ImplementationContract.md §0.2): a
+    # per-goal override of financial_assumptions.inflation_rate for
+    # education/medical goals, which run 2.5-3x general inflation
+    # (CalculationEngineReport.md #10). NULL means "use the global rate,"
+    # unchanged for every goal that doesn't opt in.
+    custom_inflation_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Computed fields refreshed by the planning engine
     on_track: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -71,8 +82,8 @@ class Goal(Base):
         nullable=False,
     )
 
-    user: Mapped["User"] = relationship("User", back_populates="goals")  # type: ignore[name-defined]
-    simulations: Mapped[list["Simulation"]] = relationship(  # type: ignore[name-defined]
+    user: Mapped["User"] = relationship("User", back_populates="goals")
+    simulations: Mapped[list["Simulation"]] = relationship(
         "Simulation", back_populates="goal", cascade="all, delete-orphan"
     )
 

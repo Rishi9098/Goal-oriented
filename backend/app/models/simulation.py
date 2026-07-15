@@ -1,11 +1,16 @@
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.goal import Goal
+    from app.models.user import User
 
 
 class Simulation(Base):
@@ -41,14 +46,14 @@ class Simulation(Base):
     p50: Mapped[float] = mapped_column(Float, nullable=False)
     p75: Mapped[float] = mapped_column(Float, nullable=False)
     p90: Mapped[float] = mapped_column(Float, nullable=False)
-    distribution: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    distribution: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False, default=dict)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    user: Mapped["User"] = relationship("User", back_populates="simulations")  # type: ignore[name-defined]
-    goal: Mapped["Goal | None"] = relationship("Goal", back_populates="simulations")  # type: ignore[name-defined]
+    user: Mapped["User"] = relationship("User", back_populates="simulations")
+    goal: Mapped["Goal | None"] = relationship("Goal", back_populates="simulations")
 
     def __repr__(self) -> str:
         return f"<Simulation id={self.id} success_rate={self.success_rate:.1f}%>"

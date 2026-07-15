@@ -17,8 +17,10 @@ import {
   Pencil,
   Check,
 } from "lucide-react";
+import { useDialogA11y } from "@/hooks/use-dialog-a11y";
 import { api, type SimulationResult, type OptimizationResult } from "@/lib/api";
 import { formatCurrency, type Goal } from "@/lib/mock-data";
+import { EducationPlanningSection } from "./EducationPlanningSection";
 
 const CATEGORIES: { value: Goal["category"]; label: string }[] = [
   { value: "retirement", label: "Retirement" },
@@ -86,10 +88,7 @@ type EditForm = {
 };
 
 function goalToEditForm(g: Goal): EditForm {
-  const years = Math.max(
-    1,
-    new Date(g.targetDate).getFullYear() - new Date().getFullYear(),
-  );
+  const years = Math.max(1, new Date(g.targetDate).getFullYear() - new Date().getFullYear());
   return {
     name: g.name,
     category: g.category,
@@ -110,16 +109,14 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
   const [editForm, setEditForm] = useState<EditForm>(() => goalToEditForm(goal));
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [applyingRisk, setApplyingRisk] = useState<Goal["riskProfile"] | null>(null);
 
   const Icon = ICON_MAP[goal.category];
   const pct =
     goal.targetAmount > 0
       ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))
       : 0;
-  const years = Math.max(
-    0,
-    new Date(goal.targetDate).getFullYear() - new Date().getFullYear(),
-  );
+  const years = Math.max(0, new Date(goal.targetDate).getFullYear() - new Date().getFullYear());
 
   async function runSim() {
     setSim({ type: "running" });
@@ -159,6 +156,23 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
     }
   }
 
+  async function handleApplyRiskChange(riskProfile: Goal["riskProfile"]) {
+    setApplyingRisk(riskProfile);
+    try {
+      const updated = await api.updateGoal(goal.id, { riskProfile });
+      onUpdate(updated);
+      setOpt({ type: "idle" });
+      setSim({ type: "idle" });
+    } catch (e) {
+      setOpt({
+        type: "error",
+        message: e instanceof Error ? e.message : "Failed to apply risk change.",
+      });
+    } finally {
+      setApplyingRisk(null);
+    }
+  }
+
   async function handleSaveEdit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -186,6 +200,11 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
     }
   }
 
+  // AccessibilityAudit.md Phase 8 — hand-rolled panel (framer-motion, not
+  // Radix), so it needs the same Escape/focus-trap/focus-return behavior
+  // added explicitly rather than inherited from a Dialog primitive.
+  const dialogRef = useDialogA11y(onClose);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -195,12 +214,17 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
       onClick={onClose}
     >
       <motion.aside
+        ref={dialogRef}
         initial={{ x: "100%" }}
         animate={{ x: 0 }}
         exit={{ x: "100%" }}
         transition={{ type: "spring", damping: 28, stiffness: 260 }}
         onClick={(e) => e.stopPropagation()}
-        className="absolute inset-y-0 right-0 w-full max-w-md border-l border-border bg-[oklch(0.19_0.035_260)] flex flex-col overflow-y-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="goal-sim-panel-heading"
+        tabIndex={-1}
+        className="absolute inset-y-0 right-0 w-full max-w-md border-l border-border bg-[oklch(0.19_0.035_260)] flex flex-col overflow-y-auto outline-none"
       >
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-border sticky top-0 bg-[oklch(0.19_0.035_260)] z-10">
@@ -209,7 +233,9 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
               <Icon className="h-5 w-5 text-cyan" />
             </div>
             <div>
-              <p className="font-display font-semibold leading-tight">{goal.name}</p>
+              <p id="goal-sim-panel-heading" className="font-display font-semibold leading-tight">
+                {goal.name}
+              </p>
               <p className="text-xs text-muted-foreground capitalize mt-0.5">
                 {goal.category}
                 {years > 0 ? ` · ${years}y horizon` : " · Target reached"}
@@ -220,7 +246,11 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => { setEditing((v) => !v); setEditError(null); setEditForm(goalToEditForm(goal)); }}
+              onClick={() => {
+                setEditing((v) => !v);
+                setEditError(null);
+                setEditForm(goalToEditForm(goal));
+              }}
               className={`rounded-lg p-1.5 transition ${editing ? "text-cyan bg-cyan/10" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}
               title={editing ? "Cancel edit" : "Edit goal"}
             >
@@ -228,6 +258,7 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
             </button>
             <button
               onClick={onClose}
+              aria-label="Close"
               className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition"
             >
               <X className="h-4 w-4" />
@@ -248,9 +279,7 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
               <div className="p-5 space-y-4">
                 <p className="text-xs uppercase tracking-widest text-muted-foreground">Edit goal</p>
 
-                {editError && (
-                  <p className="text-xs text-red-400">{editError}</p>
-                )}
+                {editError && <p className="text-xs text-red-400">{editError}</p>}
 
                 <label className="block space-y-1">
                   <span className="text-xs text-muted-foreground">Goal name</span>
@@ -266,11 +295,15 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
                   <span className="text-xs text-muted-foreground">Category</span>
                   <select
                     value={editForm.category}
-                    onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value as Goal["category"] }))}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, category: e.target.value as Goal["category"] }))
+                    }
                     className="field-input w-full"
                   >
                     {CATEGORIES.map((c) => (
-                      <option key={c.value} value={c.value}>{c.label}</option>
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -292,7 +325,9 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
                     <input
                       type="number"
                       value={editForm.currentAmount}
-                      onChange={(e) => setEditForm((f) => ({ ...f, currentAmount: e.target.value }))}
+                      onChange={(e) =>
+                        setEditForm((f) => ({ ...f, currentAmount: e.target.value }))
+                      }
                       min="0"
                       required
                       className="field-input w-full"
@@ -303,7 +338,9 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
                     <input
                       type="number"
                       value={editForm.monthlyContribution}
-                      onChange={(e) => setEditForm((f) => ({ ...f, monthlyContribution: e.target.value }))}
+                      onChange={(e) =>
+                        setEditForm((f) => ({ ...f, monthlyContribution: e.target.value }))
+                      }
                       min="0"
                       required
                       className="field-input w-full"
@@ -327,11 +364,18 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
                   <span className="text-xs text-muted-foreground">Risk profile</span>
                   <select
                     value={editForm.riskProfile}
-                    onChange={(e) => setEditForm((f) => ({ ...f, riskProfile: e.target.value as Goal["riskProfile"] }))}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        riskProfile: e.target.value as Goal["riskProfile"],
+                      }))
+                    }
                     className="field-input w-full"
                   >
                     {RISK_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -339,7 +383,10 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
                 <div className="flex justify-end gap-2 pt-1">
                   <button
                     type="button"
-                    onClick={() => { setEditing(false); setEditError(null); }}
+                    onClick={() => {
+                      setEditing(false);
+                      setEditError(null);
+                    }}
                     className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition"
                   >
                     Cancel
@@ -350,9 +397,13 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
                     className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-cyan px-4 py-2 text-sm font-medium text-primary-foreground shadow-glow hover:opacity-90 disabled:opacity-50 transition"
                   >
                     {saving ? (
-                      <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+                      </>
                     ) : (
-                      <><Check className="h-3.5 w-3.5" /> Save changes</>
+                      <>
+                        <Check className="h-3.5 w-3.5" /> Save changes
+                      </>
                     )}
                   </button>
                 </div>
@@ -366,7 +417,9 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
           <div>
             <div className="flex items-baseline justify-between mb-2">
               <p className="font-display text-2xl">{formatCurrency(goal.currentAmount)}</p>
-              <p className="text-sm text-muted-foreground">of {formatCurrency(goal.targetAmount)}</p>
+              <p className="text-sm text-muted-foreground">
+                of {formatCurrency(goal.targetAmount)}
+              </p>
             </div>
             <div className="h-2 rounded-full bg-muted overflow-hidden">
               <motion.div
@@ -382,9 +435,16 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
               <span className={`px-2 py-0.5 rounded-full ${probBg(goal.probability)}`}>
                 {goal.probability}% current probability
               </span>
-              <span className="text-muted-foreground">{pct}% funded · +{formatCurrency(goal.monthlyContribution)}/mo</span>
+              <span className="text-muted-foreground">
+                {pct}% funded · +{formatCurrency(goal.monthlyContribution)}/mo
+              </span>
             </div>
           </div>
+
+          {/* Education Planning (Milestone 2 Task 9) — education goals only */}
+          {goal.category === "education" && (
+            <EducationPlanningSection goal={goal} onUpdate={onUpdate} />
+          )}
 
           {/* Simulation section */}
           <div className="rounded-xl border border-border bg-surface/40 p-4 space-y-4">
@@ -396,9 +456,13 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
                 className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-cyan px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-glow disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition"
               >
                 {sim.type === "running" ? (
-                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Running…</>
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Running…
+                  </>
                 ) : (
-                  <><Play className="h-3.5 w-3.5" /> Run 10,000 paths</>
+                  <>
+                    <Play className="h-3.5 w-3.5" /> Run 10,000 paths
+                  </>
                 )}
               </button>
             </div>
@@ -412,15 +476,24 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
                   className="space-y-3"
                 >
                   <div className="text-center">
-                    <p className={`font-display text-4xl font-bold ${probColor(sim.result.success_rate)}`}>
+                    <p
+                      className={`font-display text-4xl font-bold ${probColor(sim.result.success_rate)}`}
+                    >
                       {sim.result.success_rate.toFixed(1)}%
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1">probability of reaching your goal</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      probability of reaching your goal
+                    </p>
                   </div>
                   <div className="space-y-2">
                     {(["p10", "p50", "p90"] as const).map((k) => {
                       const v = sim.result.percentiles[k];
-                      const label = k === "p10" ? "Pessimistic (p10)" : k === "p50" ? "Median (p50)" : "Optimistic (p90)";
+                      const label =
+                        k === "p10"
+                          ? "Pessimistic (p10)"
+                          : k === "p50"
+                            ? "Median (p50)"
+                            : "Optimistic (p90)";
                       const barPct = Math.min(100, (v / sim.result.percentiles.p90) * 100);
                       return (
                         <div key={k}>
@@ -467,9 +540,13 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
                 {opt.type === "loading" ? (
-                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing…</>
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing…
+                  </>
                 ) : (
-                  <><Zap className="h-3.5 w-3.5 text-cyan" /> Optimize toward 80%</>
+                  <>
+                    <Zap className="h-3.5 w-3.5 text-cyan" /> Optimize toward 80%
+                  </>
                 )}
               </button>
             </div>
@@ -500,10 +577,21 @@ export function GoalSimPanel({ goal, onClose, onDelete, onUpdate }: Props) {
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">{s.impact_summary}</p>
                       {s.risk_profile_change && (
-                        <span className="mt-2 inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
-                          <ChevronRight className="h-3 w-3" />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleApplyRiskChange(s.risk_profile_change as Goal["riskProfile"])
+                          }
+                          disabled={applyingRisk !== null}
+                          className="mt-2 inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground hover:border-border-strong hover:text-foreground disabled:opacity-50 transition"
+                        >
+                          {applyingRisk === s.risk_profile_change ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <ChevronRight className="h-3 w-3" />
+                          )}
                           Switch to {s.risk_profile_change}
-                        </span>
+                        </button>
                       )}
                     </div>
                   ))}

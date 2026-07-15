@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from functools import partial
 
 import numpy as np
+import numpy.typing as npt
 
 # Annual return / volatility assumptions per risk profile
 PROFILE_PARAMS: dict[str, dict[str, float]] = {
@@ -35,7 +36,7 @@ class SimulationResult:
     p75: float
     p90: float
     distribution: dict[str, float]
-    terminal_values: np.ndarray
+    terminal_values: npt.NDArray[np.float64]
 
 
 def run_simulation(
@@ -127,6 +128,7 @@ def quick_probability(
     years_to_goal: float,
     risk_profile: str,
     target_amount: float,
+    seed: int | None = None,
 ) -> float:
     """Fast probability estimate using 2 000 simulations for inline updates."""
     result = run_simulation(
@@ -136,6 +138,7 @@ def quick_probability(
         risk_profile=risk_profile,
         target_amount=target_amount,
         num_simulations=2_000,
+        seed=seed,
     )
     return result.success_rate
 
@@ -172,6 +175,7 @@ async def quick_probability_async(
     years_to_goal: float,
     risk_profile: str,
     target_amount: float,
+    seed: int | None = None,
 ) -> float:
     """Async fast probability estimate — offloads NumPy work to thread pool."""
     fn = partial(
@@ -181,5 +185,6 @@ async def quick_probability_async(
         years_to_goal=years_to_goal,
         risk_profile=risk_profile,
         target_amount=target_amount,
+        seed=seed,
     )
     return await asyncio.get_running_loop().run_in_executor(None, fn)

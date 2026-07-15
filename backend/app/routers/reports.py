@@ -19,9 +19,9 @@ async def report_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ReportSummaryResponse:
-    # `get_dashboard` refreshes goal probabilities and aggregates all financials.
-    # The session identity map will return the same already-updated Goal objects
-    # when we SELECT below, so this costs one Monte Carlo pass, not two.
+    # `get_dashboard` is read-only (ADR-001): it aggregates financials and reads
+    # each goal's already-persisted probability, never recomputes it. The SELECT
+    # below reads the same identity-mapped Goal objects, so both always agree.
     dashboard = await get_dashboard(db, current_user)
 
     result = await db.execute(

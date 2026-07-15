@@ -12,6 +12,10 @@ export type Goal = {
   onTrack: boolean;
   probability: number; // 0-100, Monte Carlo success probability
   riskProfile: "conservative" | "balanced" | "aggressive";
+  // Milestone 2 Task 9: nullable per-goal override of the global inflation
+  // rate, feeding only a separate future-cost projection — never Monte
+  // Carlo probability/onTrack. See CalculationContextReview.md.
+  customInflationRate?: number | null;
 };
 
 export const goals: Goal[] = [

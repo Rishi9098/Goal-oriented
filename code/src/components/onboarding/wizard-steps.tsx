@@ -126,13 +126,22 @@ function NavRow({
 export type ProfileFormState = {
   date_of_birth: string;
   gender: string;
-  marital_status: string;
-  dependents: string;
   country: string;
   state_province: string;
   employment_status: string;
   employer: string;
   occupation: string;
+};
+
+// Milestone 2 Task 4: replaces the deprecated marital_status/dependents
+// fields (see PROJECT_STATE.md's Foundation Reconciliation entry) with the
+// 3-question + count design from FamilyPlanningDesign.md Part 3, wired to
+// POST /family/onboarding-seed (Task 2) instead of PUT /profile.
+export type FamilyStepFormState = {
+  has_spouse: "yes" | "no";
+  has_children: "yes" | "no";
+  children_count: string;
+  has_dependent_parents: "yes" | "no";
 };
 
 export type GoalFormState = {
@@ -170,11 +179,9 @@ const COUNTRIES = [
   { value: "other", label: "Other" },
 ];
 
-const MARITAL_STATUSES = [
-  { value: "single", label: "Single" },
-  { value: "married", label: "Married / partnered" },
-  { value: "divorced", label: "Divorced" },
-  { value: "widowed", label: "Widowed" },
+const YES_NO = [
+  { value: "no", label: "No" },
+  { value: "yes", label: "Yes" },
 ];
 
 const EMPLOYMENT_STATUSES = [
@@ -265,39 +272,63 @@ export function StepFamily({
   onChange,
   onSubmit,
   onBack,
-  onSkip,
   loading,
 }: {
-  form: ProfileFormState;
-  onChange: (patch: Partial<ProfileFormState>) => void;
+  form: FamilyStepFormState;
+  onChange: (patch: Partial<FamilyStepFormState>) => void;
   onSubmit: (e: React.FormEvent) => void;
   onBack: () => void;
-  onSkip: () => void;
   loading: boolean;
 }) {
   return (
     <>
-      <h2 className="font-display text-2xl tracking-tight">Family situation</h2>
+      <h2 className="font-display text-2xl tracking-tight">Who&apos;s counting on you?</h2>
       <p className="mt-1 text-sm text-muted-foreground mb-6">
-        Dependents affect your projected living costs and insurance needs.
+        This helps us tailor a few recommendations later — you don&apos;t need to add every detail
+        right now.
       </p>
-      <form onSubmit={onSubmit} noValidate className="space-y-4">
+      <form onSubmit={onSubmit} noValidate className="space-y-5">
         <SelectField
-          label="Marital status"
-          value={form.marital_status}
-          onChange={(v) => onChange({ marital_status: v })}
-          options={MARITAL_STATUSES}
+          label="Do you have a spouse or partner?"
+          value={form.has_spouse}
+          onChange={(v) => onChange({ has_spouse: v === "yes" ? "yes" : "no" })}
+          options={YES_NO}
         />
-        <InputField
-          label="Number of dependents"
-          type="number"
-          value={form.dependents}
-          onChange={(v) => onChange({ dependents: v })}
-          placeholder="0"
-          min="0"
-          max="20"
+
+        <div>
+          <SelectField
+            label="Do you have children?"
+            value={form.has_children}
+            onChange={(v) => onChange({ has_children: v === "yes" ? "yes" : "no" })}
+            options={YES_NO}
+          />
+          {form.has_children === "yes" && (
+            <div className="mt-3 pl-3 border-l-2 border-border">
+              <InputField
+                label="How many?"
+                type="number"
+                value={form.children_count}
+                onChange={(v) => onChange({ children_count: v })}
+                placeholder="1"
+                required
+                min="1"
+                max="10"
+              />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                You&apos;ll be able to add each child&apos;s name and other details later.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <SelectField
+          label="Do your parents depend on you financially?"
+          value={form.has_dependent_parents}
+          onChange={(v) => onChange({ has_dependent_parents: v === "yes" ? "yes" : "no" })}
+          options={YES_NO}
         />
-        <NavRow onBack={onBack} onSkip={onSkip} loading={loading} />
+
+        <NavRow onBack={onBack} loading={loading} />
       </form>
     </>
   );
