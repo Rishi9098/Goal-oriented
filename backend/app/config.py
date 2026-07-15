@@ -78,6 +78,15 @@ class Settings(BaseSettings):
         # mean "disabled", so a blanket None-coercion would break it.
         return None if value == "" else value
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def assemble_db_url(cls, v: str) -> str:
+        if v and v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+asyncpg://", 1)
+        if v and v.startswith("postgresql://") and not v.startswith("postgresql+asyncpg://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:
