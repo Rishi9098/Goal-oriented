@@ -9,7 +9,16 @@
 import type { Goal } from "./mock-data";
 import { goals as goalsFixture } from "./mock-data";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL as string | undefined;
+const ENV_URL = import.meta.env.VITE_API_BASE_URL as string | undefined;
+
+if (import.meta.env.PROD && !ENV_URL) {
+  console.error("CRITICAL: VITE_API_BASE_URL is missing in production!");
+}
+
+const SHOULD_USE_MOCK = !ENV_URL && import.meta.env.DEV;
+const BASE_URL = SHOULD_USE_MOCK 
+  ? undefined 
+  : (ENV_URL ? (ENV_URL.endsWith('/api/v1') ? ENV_URL : `${ENV_URL}/api/v1`) : '/api/v1');
 
 // ── Backend ↔ frontend shape mapping ─────────────────────────────────────────
 // The backend returns snake_case; the frontend Goal type uses camelCase.

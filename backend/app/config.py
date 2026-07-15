@@ -78,6 +78,13 @@ class Settings(BaseSettings):
         # mean "disabled", so a blanket None-coercion would break it.
         return None if value == "" else value
 
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:
+        if isinstance(v, str):
+            return [i.strip() for i in v.split(",") if i.strip()]
+        return v
+
 
 @lru_cache
 def get_settings() -> Settings:
