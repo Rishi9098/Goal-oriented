@@ -10,3 +10,4 @@ passlib[bcrypt]==1.7.4
 numpy==2.2.1
 openai==1.58.1
 python-multipart==0.0.20
+email-validator>=2.2.0
