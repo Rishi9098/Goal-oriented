@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # 5173. Both are listed since either can show up depending on how Vite
     # is invoked.
     cors_origins: list[str] = [
+        "https://goal-oriented-eta.vercel.app",
         "http://localhost:8080",
         "http://localhost:5173",
         "http://localhost:3000",
