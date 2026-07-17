@@ -16,9 +16,13 @@ if (import.meta.env.PROD && !ENV_URL) {
 }
 
 const SHOULD_USE_MOCK = !ENV_URL && import.meta.env.DEV;
-const BASE_URL = SHOULD_USE_MOCK 
-  ? undefined 
-  : (ENV_URL ? (ENV_URL.endsWith('/api/v1') ? ENV_URL : `${ENV_URL}/api/v1`) : '/api/v1');
+const BASE_URL = SHOULD_USE_MOCK
+  ? undefined
+  : ENV_URL
+    ? ENV_URL.endsWith("/api/v1")
+      ? ENV_URL
+      : `${ENV_URL}/api/v1`
+    : "/api/v1";
 
 // ── Backend ↔ frontend shape mapping ─────────────────────────────────────────
 // The backend returns snake_case; the frontend Goal type uses camelCase.

@@ -123,7 +123,9 @@ function ResetPassword() {
 
           <label className="block">
             <span className="text-xs text-muted-foreground">Confirm password</span>
-            <div className={`mt-1 flex items-center gap-2 rounded-lg border bg-surface px-3 py-2.5 focus-within:border-primary transition-colors ${mismatch ? "border-destructive" : "border-border"}`}>
+            <div
+              className={`mt-1 flex items-center gap-2 rounded-lg border bg-surface px-3 py-2.5 focus-within:border-primary transition-colors ${mismatch ? "border-destructive" : "border-border"}`}
+            >
               <Lock className="h-4 w-4 text-muted-foreground shrink-0" />
               <input
                 type={showPw ? "text" : "password"}
@@ -135,9 +137,7 @@ function ResetPassword() {
                 className="bg-transparent outline-none text-sm flex-1"
               />
             </div>
-            {mismatch && (
-              <p className="mt-1 text-xs text-destructive">Passwords don't match</p>
-            )}
+            {mismatch && <p className="mt-1 text-xs text-destructive">Passwords don't match</p>}
           </label>
 
           <button
@@ -146,7 +146,9 @@ function ResetPassword() {
             className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-primary to-cyan px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-glow hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {state === "loading" ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> Updating…</>
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Updating…
+              </>
             ) : (
               "Update password"
             )}
