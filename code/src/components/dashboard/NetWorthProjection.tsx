@@ -26,8 +26,7 @@ function project(initial: number, monthly: number, years: number, rate: number):
   const months = years * 12;
   if (mr === 0) return Math.round(initial + monthly * months);
   return Math.round(
-    initial * Math.pow(1 + mr, months) +
-      monthly * (Math.pow(1 + mr, months) - 1) / mr,
+    initial * Math.pow(1 + mr, months) + (monthly * (Math.pow(1 + mr, months) - 1)) / mr,
   );
 }
 
@@ -69,11 +68,7 @@ export function NetWorthProjection({ netWorth, monthlySavings }: Props) {
                 <stop offset="95%" stopColor={C.balanced} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="rgba(255,255,255,0.06)"
-              vertical={false}
-            />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
             <XAxis
               dataKey="label"
               tick={{ fill: "#94a3b8", fontSize: 11 }}
@@ -142,9 +137,7 @@ export function NetWorthProjection({ netWorth, monthlySavings }: Props) {
               <p className="mb-0.5 text-xs" style={{ color: C[k] }}>
                 {label}
               </p>
-              <p className="font-display text-sm font-semibold text-foreground">
-                {fmtAxis(val)}
-              </p>
+              <p className="font-display text-sm font-semibold text-foreground">{fmtAxis(val)}</p>
               <p className="text-xs text-muted-foreground">in 30 yrs</p>
             </div>
           );
@@ -160,17 +153,11 @@ export function NetWorthProjection({ netWorth, monthlySavings }: Props) {
           5% / yr
         </span>
         <span className="flex items-center gap-1.5">
-          <span
-            className="inline-block h-0.5 w-5 rounded"
-            style={{ background: C.balanced }}
-          />
+          <span className="inline-block h-0.5 w-5 rounded" style={{ background: C.balanced }} />
           7% / yr
         </span>
         <span className="flex items-center gap-1.5">
-          <span
-            className="inline-block h-0.5 w-5 rounded"
-            style={{ background: C.aggressive }}
-          />
+          <span className="inline-block h-0.5 w-5 rounded" style={{ background: C.aggressive }} />
           9% / yr
         </span>
       </div>

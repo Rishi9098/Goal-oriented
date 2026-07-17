@@ -53,11 +53,13 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  --shadow-glow: 0 0 0 1px color-mix(in oklab, var(--primary) 35%, transparent),
+  --shadow-glow:
+    0 0 0 1px color-mix(in oklab, var(--primary) 35%, transparent),
     0 20px 60px -20px color-mix(in oklab, var(--primary) 45%, transparent);
-  --shadow-elevated: 0 1px 0 0 color-mix(in oklab, white 6%, transparent) inset,
-    0 20px 50px -20px oklch(0 0 0 / 0.6);
-  --gradient-hero: radial-gradient(
+  --shadow-elevated:
+    0 1px 0 0 color-mix(in oklab, white 6%, transparent) inset, 0 20px 50px -20px oklch(0 0 0 / 0.6);
+  --gradient-hero:
+    radial-gradient(
       120% 80% at 80% 0%,
       color-mix(in oklab, var(--cyan) 22%, transparent) 0%,
       transparent 60%
@@ -85,9 +87,9 @@
   --popover: oklch(0.235 0.04 262);
   --popover-foreground: oklch(0.97 0.01 250);
 
-  --primary: oklch(0.66 0.19 255);          /* electric blue */
+  --primary: oklch(0.66 0.19 255); /* electric blue */
   --primary-foreground: oklch(0.99 0 0);
-  --cyan: oklch(0.82 0.14 200);             /* cyan accent */
+  --cyan: oklch(0.82 0.14 200); /* cyan accent */
   --cyan-foreground: oklch(0.18 0.035 260);
 
   --secondary: oklch(0.3 0.04 262);
@@ -129,7 +131,10 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
-  h1, h2, h3, h4 {
+  h1,
+  h2,
+  h3,
+  h4 {
     font-family: var(--font-display);
     letter-spacing: -0.02em;
   }

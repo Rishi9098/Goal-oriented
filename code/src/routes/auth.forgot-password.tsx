@@ -68,7 +68,11 @@ function ForgotPassword() {
             )}
 
             <button
-              onClick={() => { setState("idle"); setEmail(""); setResetToken(null); }}
+              onClick={() => {
+                setState("idle");
+                setEmail("");
+                setResetToken(null);
+              }}
               className="text-sm text-muted-foreground hover:text-foreground transition"
             >
               Send to a different email
@@ -76,7 +80,7 @@ function ForgotPassword() {
           </div>
         ) : (
           <>
-            {(state === "error") && errorMsg && (
+            {state === "error" && errorMsg && (
               <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
                 {errorMsg}
               </div>
@@ -105,9 +109,13 @@ function ForgotPassword() {
                 className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-primary to-cyan px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-glow hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {state === "loading" ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</>
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Sending…
+                  </>
                 ) : (
-                  <>Send reset link <ArrowRight className="h-4 w-4" /></>
+                  <>
+                    Send reset link <ArrowRight className="h-4 w-4" />
+                  </>
                 )}
               </button>
             </form>

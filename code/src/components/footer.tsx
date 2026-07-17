@@ -6,7 +6,8 @@ export function Footer() {
       <div className="max-w-3xl mx-auto text-center space-y-3">
         <h3 className="text-sm font-medium text-foreground">Need help or found an issue?</h3>
         <p className="text-sm text-muted-foreground leading-relaxed max-w-xl mx-auto">
-          If you experience any problems, have suggestions, or want to report a bug, feel free to contact me.
+          If you experience any problems, have suggestions, or want to report a bug, feel free to
+          contact me.
         </p>
         <div className="pt-2">
           <a

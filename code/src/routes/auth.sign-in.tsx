@@ -25,11 +25,7 @@ function SignIn() {
       setAccessToken(tokens.access_token);
       navigate({ to: "/app" });
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Invalid email or password."
-      );
+      setError(err instanceof Error ? err.message : "Invalid email or password.");
     } finally {
       setLoading(false);
     }
@@ -45,12 +41,9 @@ function SignIn() {
         </Link>
         <div>
           <p className="font-display text-3xl tracking-tight max-w-md">
-            "The first tool that made our family's plan feel real — and
-            actionable every month."
+            "The first tool that made our family's plan feel real — and actionable every month."
           </p>
-          <p className="mt-4 text-sm text-muted-foreground">
-            Eliza R. — early customer
-          </p>
+          <p className="mt-4 text-sm text-muted-foreground">Eliza R. — early customer</p>
         </div>
         <div className="text-xs text-muted-foreground">
           SOC 2 Type II · AES-256 · read-only linking
@@ -61,9 +54,7 @@ function SignIn() {
       <div className="flex items-center justify-center p-6">
         <div className="w-full max-w-sm">
           <h1 className="font-display text-3xl tracking-tight">Welcome back</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Sign in to keep your plan on track.
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground">Sign in to keep your plan on track.</p>
 
           {error && (
             <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">

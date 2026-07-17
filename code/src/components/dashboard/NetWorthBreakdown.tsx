@@ -33,9 +33,7 @@ export function NetWorthBreakdown({ liquid, invested, liabilities, netWorth }: P
     { label: "Cash & savings", value: liquid, color: "#38bdf8" },
     { label: "Investments", value: invested, color: "#818cf8" },
     ...(other > 0 ? [{ label: "Other assets", value: other, color: "#34d399" }] : []),
-    ...(liabilities > 0
-      ? [{ label: "Liabilities", value: liabilities, color: "#f87171" }]
-      : []),
+    ...(liabilities > 0 ? [{ label: "Liabilities", value: liabilities, color: "#f87171" }] : []),
   ].filter((s) => s.value > 0);
 
   const totalDisplay = slices.reduce((s, x) => s + x.value, 0);
@@ -43,9 +41,7 @@ export function NetWorthBreakdown({ liquid, invested, liabilities, netWorth }: P
   if (totalDisplay === 0) {
     return (
       <div className="flex h-48 flex-col items-center justify-center gap-2 text-center">
-        <p className="text-sm text-muted-foreground">
-          Add assets to see your breakdown
-        </p>
+        <p className="text-sm text-muted-foreground">Add assets to see your breakdown</p>
       </div>
     );
   }
@@ -56,10 +52,7 @@ export function NetWorthBreakdown({ liquid, invested, liabilities, netWorth }: P
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-6">
         <div className="relative shrink-0">
-          <div
-            className="h-32 w-32 rounded-full"
-            style={{ background: gradient }}
-          />
+          <div className="h-32 w-32 rounded-full" style={{ background: gradient }} />
           <div className="absolute inset-0 m-auto h-20 w-20 rounded-full bg-[oklch(0.20_0.04_262)]" />
         </div>
 
@@ -76,9 +69,7 @@ export function NetWorthBreakdown({ liquid, invested, liabilities, netWorth }: P
                   <p className="truncate text-xs text-muted-foreground">{s.label}</p>
                   <p className="text-sm font-medium text-foreground">
                     {fmtDollar(s.value)}{" "}
-                    <span className="text-xs font-normal text-muted-foreground">
-                      {pct}%
-                    </span>
+                    <span className="text-xs font-normal text-muted-foreground">{pct}%</span>
                   </p>
                 </div>
               </div>
@@ -89,9 +80,7 @@ export function NetWorthBreakdown({ liquid, invested, liabilities, netWorth }: P
 
       <div className="rounded-lg border border-border/50 bg-surface/40 px-4 py-2.5">
         <p className="text-xs text-muted-foreground">Net worth</p>
-        <p className="font-display text-lg font-semibold text-foreground">
-          {fmtDollar(netWorth)}
-        </p>
+        <p className="font-display text-lg font-semibold text-foreground">{fmtDollar(netWorth)}</p>
       </div>
     </div>
   );

@@ -33,10 +33,18 @@ function Landing() {
             <span className="font-display text-lg font-semibold tracking-tight">Northstar</span>
           </Link>
           <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
-            <a href="#product" className="hover:text-foreground transition">Product</a>
-            <a href="#how" className="hover:text-foreground transition">How it works</a>
-            <a href="#trust" className="hover:text-foreground transition">Security</a>
-            <a href="#pricing" className="hover:text-foreground transition">Pricing</a>
+            <a href="#product" className="hover:text-foreground transition">
+              Product
+            </a>
+            <a href="#how" className="hover:text-foreground transition">
+              How it works
+            </a>
+            <a href="#trust" className="hover:text-foreground transition">
+              Security
+            </a>
+            <a href="#pricing" className="hover:text-foreground transition">
+              Pricing
+            </a>
           </nav>
           <div className="flex items-center gap-2">
             <Link
@@ -82,8 +90,8 @@ function Landing() {
             transition={{ duration: 0.6, delay: 0.1 }}
             className="mt-6 max-w-2xl mx-auto text-muted-foreground text-lg"
           >
-            Northstar models every dollar against every goal — retirement, home, college, sabbatical —
-            and tells you exactly what to do this month to stay on track.
+            Northstar models every dollar against every goal — retirement, home, college, sabbatical
+            — and tells you exactly what to do this month to stay on track.
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 16 }}
@@ -116,7 +124,9 @@ function Landing() {
               <div className="p-6 md:p-8 border-b md:border-b-0 md:border-r border-border">
                 <div className="flex items-baseline justify-between">
                   <div>
-                    <p className="text-xs uppercase tracking-widest text-muted-foreground">Net worth</p>
+                    <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                      Net worth
+                    </p>
                     <p className="mt-1 font-display text-3xl md:text-4xl">$902,300</p>
                   </div>
                   <span className="text-xs rounded-full bg-success/15 text-success px-2 py-0.5">
@@ -239,7 +249,11 @@ function Landing() {
           <div className="grid md:grid-cols-3 gap-10">
             {[
               { n: "01", t: "Link your accounts", d: "Read-only, OAuth. No credentials stored." },
-              { n: "02", t: "Define your goals", d: "Horizon, amount, priority — guided in minutes." },
+              {
+                n: "02",
+                t: "Define your goals",
+                d: "Horizon, amount, priority — guided in minutes.",
+              },
               { n: "03", t: "Run the plan", d: "Simulate, accept actions, monitor monthly." },
             ].map((s) => (
               <div key={s.n}>
@@ -277,9 +291,15 @@ function Landing() {
             <span>© {new Date().getFullYear()} Northstar Planning</span>
           </div>
           <div className="flex gap-6">
-            <a href="#" className="hover:text-foreground">Privacy</a>
-            <a href="#" className="hover:text-foreground">Terms</a>
-            <a href="#" className="hover:text-foreground">Disclosures</a>
+            <a href="#" className="hover:text-foreground">
+              Privacy
+            </a>
+            <a href="#" className="hover:text-foreground">
+              Terms
+            </a>
+            <a href="#" className="hover:text-foreground">
+              Disclosures
+            </a>
           </div>
         </div>
       </footer>
