@@ -82,17 +82,37 @@ class Settings(BaseSettings):
     @field_validator("database_url", mode="before")
     @classmethod
     def assemble_db_url(cls, v: str) -> str:
-        if v and v.startswith("postgres://"):
-            return v.replace("postgres://", "postgresql+asyncpg://", 1)
-        if v and v.startswith("postgresql://") and not v.startswith("postgresql+asyncpg://"):
-            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if not v:
+            return v
+        if v.startswith("postgres://"):
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif v.startswith("postgresql://") and not v.startswith("postgresql+asyncpg://"):
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if "sslmode=" in v:
+            v = v.replace("sslmode=require", "ssl=require")
+            v = v.replace("sslmode=prefer", "ssl=require")
+            v = v.replace("sslmode=verify-ca", "ssl=verify-ca")
+            v = v.replace("sslmode=verify-full", "ssl=verify-full")
+            v = v.replace("sslmode=disable", "ssl=disable")
         return v
 
     @field_validator("cors_origins", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:
         if isinstance(v, str):
-            return [i.strip() for i in v.split(",") if i.strip()]
+            v_str = v.strip()
+            if v_str.startswith("[") and v_str.endswith("]"):
+                import json
+                try:
+                    parsed = json.loads(v_str)
+                    if isinstance(parsed, list):
+                        return [str(i).strip().rstrip("/") for i in parsed if i]
+                except Exception:
+                    pass
+            origins = [i.strip().rstrip("/") for i in v_str.split(",") if i.strip()]
+            return [o if o == "*" else o for o in origins]
+        if isinstance(v, list):
+            return [str(i).strip().rstrip("/") if str(i) != "*" else "*" for i in v if i]
         return v
 
 

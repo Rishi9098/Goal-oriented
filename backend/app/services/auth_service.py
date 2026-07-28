@@ -6,10 +6,17 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
+import bcrypt
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from app.config import get_settings
+
+# Passlib 1.7.4 compatibility patch for bcrypt >= 4.0.0
+if not hasattr(bcrypt, "__about__"):
+    class __about__:  # type: ignore[no-redef]
+        __version__ = getattr(bcrypt, "__version__", "4.1.3")
+    bcrypt.__about__ = __about__  # type: ignore[attr-defined]
 
 settings = get_settings()
 

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.config import get_settings
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, engine
 from app.logging_config import configure_logging, get_logger
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.request_id import RequestIDMiddleware
@@ -59,6 +59,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("startup environment=%s version=%s", settings.environment, settings.app_version)
     yield
     logger.info("shutdown")
+    await engine.dispose()
 
 
 def _register_life_event_handlers() -> None:
@@ -123,6 +124,15 @@ def create_app() -> FastAPI:
     app.include_router(family.router, prefix=prefix)
     app.include_router(notifications.router, prefix=prefix)
     app.include_router(life_events.router, prefix=prefix)
+
+    @app.get("/", tags=["meta"])
+    async def root() -> dict[str, str]:
+        """Root status probe for load balancers and platform monitors."""
+        return {
+            "name": settings.app_name,
+            "version": settings.app_version,
+            "status": "ok",
+        }
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:
